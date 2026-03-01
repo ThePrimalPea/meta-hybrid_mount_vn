@@ -130,7 +130,8 @@ fn main() -> Result<()> {
     })();
 
     if let Err(e) = daemon_result {
-        core::inventory::model::update_crash_description(&e.to_string());
+        let err_msg = format!("{:#}", e).replace('\n', " -> ");
+        core::inventory::model::update_crash_description(&err_msg);
         return Err(e);
     }
 
