@@ -22,6 +22,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Delete old translation branch
+        run: |
+          if git ls-remote --exit-code --heads origin l10n_crowdin_translations; then
+            git push origin --delete l10n_crowdin_translations
+          fi
+
       - name: Crowdin
         uses: crowdin/github-action@v2
         with:
