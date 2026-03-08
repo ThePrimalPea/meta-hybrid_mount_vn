@@ -1,4 +1,3 @@
-pub mod process;
 pub mod validation;
 
 use std::{
@@ -9,8 +8,7 @@ use std::{
 use anyhow::Result;
 use log::LevelFilter;
 
-pub use self::{process::*, validation::*};
-use crate::defs;
+pub use self::validation::*;
 
 pub fn get_mnt() -> PathBuf {
     let mut name = String::new();
