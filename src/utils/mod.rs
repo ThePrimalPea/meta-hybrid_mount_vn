@@ -1,11 +1,16 @@
 pub mod process;
 pub mod validation;
 
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::Result;
+use log::LevelFilter;
 
 pub use self::{process::*, validation::*};
+use crate::defs;
 
 pub fn get_mnt() -> PathBuf {
     let mut name = String::new();
@@ -14,15 +19,23 @@ pub fn get_mnt() -> PathBuf {
         name.push(fastrand::alphanumeric());
     }
 
-    Path::new("/mnt").join(name)
+    let ret = Path::new("/mnt").join(name);
+    log::trace!("mnt: {}", ret.display());
+    ret
 }
 
 pub fn init_logging() -> Result<()> {
+    let level = if fs::exists(defs::TRACING).is_ok() {
+        LevelFilter::Trace
+    } else {
+        LevelFilter::Info
+    };
+
     #[cfg(target_os = "android")]
     {
         android_logger::init_once(
             android_logger::Config::default()
-                .with_max_level(log::LevelFilter::Debug)
+                .with_max_level(level)
                 .with_tag("Hybrid_Logger"),
         );
     }
@@ -42,7 +55,7 @@ pub fn init_logging() -> Result<()> {
                 record.args()
             )
         });
-        builder.filter_level(log::LevelFilter::Debug).init();
+        builder.filter_level(level).init();
     }
     Ok(())
 }

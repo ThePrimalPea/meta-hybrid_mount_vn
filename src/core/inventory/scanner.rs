@@ -65,6 +65,7 @@ pub struct Module {
 }
 
 pub fn scan(source_dir: &Path, cfg: &config::Config) -> Result<Vec<Module>> {
+    log::trace!("scanning {} with {:?}", source_dir.display(), cfg);
     if !source_dir.exists() {
         return Ok(Vec::new());
     }

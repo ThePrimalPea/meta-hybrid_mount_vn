@@ -167,10 +167,12 @@ pub fn setup(
     }
 
     if is_mounted(mnt_base) {
+        log::trace!("{} was mounted, umounting", mnt_base.display());
         let _ = umount(mnt_base, UnmountFlags::DETACH);
     }
 
     let try_hide = |path: &Path| {
+        log::trace!("trying hide {}", path.display());
         #[cfg(any(target_os = "linux", target_os = "android"))]
         if !disable_umount {
             let _ = send_umountable(path);
@@ -180,17 +182,21 @@ pub fn setup(
     };
 
     let make_private = |path: &Path| {
+        log::trace!("trying make {} is private", path.display());
         let _ = mount_change(path, MountPropagationFlags::PRIVATE);
     };
 
     if use_erofs && is_erofs_supported() {
+        log::trace!("erofs was supported, will use erofs mode");
         let erofs_path = img_path.with_extension("erofs");
         let staging_dir = Path::new(defs::RUN_DIR).join("erofs_staging");
 
         if is_mounted(&staging_dir) {
+            log::trace!("{} was mounted, umounting", staging_dir.display());
             let _ = umount(&staging_dir, UnmountFlags::DETACH);
         }
         if staging_dir.exists() {
+            log::trace!("{} was exists, removeing", staging_dir.display());
             let _ = fs::remove_dir_all(&staging_dir);
         }
         ensure_dir_exists(&staging_dir)?;
@@ -210,6 +216,7 @@ pub fn setup(
     }
 
     if !force_ext4 && try_setup_tmpfs(mnt_base, mount_source)? {
+        log::trace!("tmpfs mode was supported, and no use erofs mode");
         make_private(mnt_base);
         try_hide(mnt_base);
 
@@ -242,12 +249,14 @@ fn try_setup_tmpfs(target: &Path, mount_source: &str) -> Result<bool> {
 }
 
 fn setup_ext4_image(target: &Path, img_path: &Path, moduledir: &Path) -> Result<Ext4Backend> {
+    log::trace!("using ext4 mode");
     let total_size = calculate_total_size(moduledir)?;
     let min_size = 64 * 1024 * 1024;
     let grow_size = std::cmp::max((total_size as f64 * 1.2) as u64, min_size);
 
     fs::File::create(img_path)?.set_len(grow_size)?;
 
+    log::trace!("formating image");
     let result = Command::new("mkfs.ext4")
         .arg("-b")
         .arg("1024")
