@@ -9,6 +9,7 @@ use anyhow::Result;
 use log::LevelFilter;
 
 pub use self::validation::*;
+use crate::defs;
 
 pub fn get_mnt() -> PathBuf {
     let mut name = String::new();
