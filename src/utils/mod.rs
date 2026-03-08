@@ -23,7 +23,7 @@ pub fn init_logging() -> Result<()> {
         android_logger::init_once(
             android_logger::Config::default()
                 .with_max_level(log::LevelFilter::Debug)
-                .with_tag("mhm"),
+                .with_tag("Hybrid_Logger"),
         );
     }
 
