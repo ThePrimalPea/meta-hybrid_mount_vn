@@ -163,7 +163,10 @@ pub fn setup(
 ) -> Result<StorageHandle> {
     let img_path = PathBuf::from(defs::MODULES_IMG_FILE);
 
-    for p in glob::glob(defs::MODULES_IMG_FILE)?.flatten() {
+    for p in
+        glob::glob(format!("{}/*.img.*", img_path.parent().unwrap().to_str().unwrap()).as_str())?
+            .flatten()
+    {
         let _ = fs::remove_file(p);
     }
 
