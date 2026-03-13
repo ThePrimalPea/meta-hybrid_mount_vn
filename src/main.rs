@@ -9,7 +9,6 @@ mod sys;
 mod utils;
 
 use core::MountController;
-use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -105,13 +104,12 @@ fn main() -> Result<()> {
     }
 
     let mnt_base = utils::get_mnt();
-    let img_path = PathBuf::from(defs::MODULES_IMG_FILE);
 
     sys::fs::ensure_dir_exists(&mnt_base)?;
 
     let daemon_result = (|| -> Result<()> {
         MountController::new(config, &mnt_base)
-            .init_storage(&mnt_base, &img_path)
+            .init_storage(&mnt_base)
             .context("Failed to initialize storage")?
             .scan_and_sync()
             .context("Failed to scan and sync modules")?

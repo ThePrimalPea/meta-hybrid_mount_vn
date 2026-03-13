@@ -58,14 +58,9 @@ impl MountController<Init> {
         }
     }
 
-    pub fn init_storage(
-        self,
-        mnt_base: &Path,
-        img_path: &Path,
-    ) -> Result<MountController<StorageReady>> {
+    pub fn init_storage(self, mnt_base: &Path) -> Result<MountController<StorageReady>> {
         let handle = storage::setup(
             mnt_base,
-            img_path,
             &self.config.moduledir,
             matches!(
                 self.config.overlay_mode,

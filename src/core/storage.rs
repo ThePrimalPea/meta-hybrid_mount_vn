@@ -154,19 +154,17 @@ where
 
 pub fn setup(
     mnt_base: &Path,
-    img_path: &Path,
+
     moduledir: &Path,
     force_ext4: bool,
     use_erofs: bool,
     mount_source: &str,
     disable_umount: bool,
 ) -> Result<StorageHandle> {
-    if img_path.exists() {
-        let _ = fs::remove_file(img_path);
-    }
-    let erofs_path = img_path.with_extension("erofs");
-    if erofs_path.exists() {
-        let _ = fs::remove_file(&erofs_path);
+    let img_path = PathBuf::from(defs::MODULES_IMG_FILE);
+
+    for p in glob::glob(defs::MODULES_IMG_FILE)?.flatten() {
+        let _ = fs::remove_file(p);
     }
 
     if is_mounted(mnt_base) {
@@ -231,7 +229,7 @@ pub fn setup(
         });
     }
 
-    let handle = setup_ext4_image(mnt_base, img_path, moduledir)?;
+    let handle = setup_ext4_image(mnt_base, &img_path, moduledir)?;
     make_private(mnt_base);
     try_hide(mnt_base);
 
@@ -251,7 +249,11 @@ fn try_setup_tmpfs(target: &Path, mount_source: &str) -> Result<bool> {
     Ok(false)
 }
 
-fn setup_ext4_image(target: &Path, img_path: &Path, moduledir: &Path) -> Result<Ext4Backend> {
+fn setup_ext4_image<P>(target: P, img_path: P, moduledir: P) -> Result<Ext4Backend>
+where
+    P: AsRef<Path>,
+{
+    let (target, img_path, moduledir) = (target.as_ref(), img_path.as_ref(), moduledir.as_ref());
     log::trace!("using ext4 mode");
     let total_size = calculate_total_size(moduledir)?;
     let min_size = 64 * 1024 * 1024;
