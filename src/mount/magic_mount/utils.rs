@@ -1,6 +1,3 @@
-// Copyright 2026 Hybrid Mount Developers
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 use std::{
     collections::HashSet,
     fs::{self, DirEntry, Metadata, create_dir, create_dir_all, read_link},
@@ -143,11 +140,10 @@ pub fn collect_module_files(
         for line in string.lines() {
             if line.starts_with("id")
                 && let Some((_, value)) = line.split_once('=')
+                && validate_module_id(value).is_err()
             {
-                if validate_module_id(value).is_err() {
-                    valid_id = false;
-                    break;
-                }
+                valid_id = false;
+                break;
             }
         }
 

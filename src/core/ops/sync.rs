@@ -1,6 +1,3 @@
-// Copyright 2026 Hybrid Mount Developers
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 use std::{collections::HashSet, fs, path::Path};
 
 use anyhow::Result;
@@ -212,12 +209,11 @@ fn should_sync(src: &Path, dst: &Path) -> bool {
     let dst_post_fs = dst.join("post-fs-data.sh");
 
     if src_post_fs.exists() && dst_post_fs.exists() {
-        if let (Ok(s_meta), Ok(d_meta)) = (fs::metadata(&src_post_fs), fs::metadata(&dst_post_fs)) {
-            if let (Ok(s_time), Ok(d_time)) = (s_meta.modified(), d_meta.modified()) {
-                if s_time > d_time {
-                    return true;
-                }
-            }
+        if let (Ok(s_meta), Ok(d_meta)) = (fs::metadata(&src_post_fs), fs::metadata(&dst_post_fs))
+            && let (Ok(s_time), Ok(d_time)) = (s_meta.modified(), d_meta.modified())
+            && s_time > d_time
+        {
+            return true;
         }
     } else if src_post_fs.exists() != dst_post_fs.exists() {
         return true;
