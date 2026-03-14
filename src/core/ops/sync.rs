@@ -25,10 +25,9 @@ pub fn normalize_module_layout<P: AsRef<Path>>(module_dir: P) -> Result<()> {
         let src_path = base.join(src_rel);
         let dst_path = base.join(dst_rel);
 
-        if src_path.is_dir()
-            && !dst_path.exists() {
-                symlink(&src_path, &dst_path)?;
-            }
+        if src_path.is_dir() && !dst_path.exists() {
+            symlink(&src_path, &dst_path)?;
+        }
     }
 
     Ok(())
@@ -39,7 +38,7 @@ pub fn perform_sync(modules: &[Module], target_base: &Path) -> Result<()> {
 
     prune_orphaned_modules(modules, target_base)?;
 
-    modules.par_iter().for_each(|module| {
+    for module in modules {
         if let Err(e) = normalize_module_layout(&module.source_path) {
             log::warn!("Failed to normalize layout for {}: {}", module.id, e);
         }
@@ -65,7 +64,7 @@ pub fn perform_sync(modules: &[Module], target_base: &Path) -> Result<()> {
             if let Err(e) = sync_dir(&module.source_path, &tmp_dst, true) {
                 log::error!("Failed to sync module {}: {}", module.id, e);
                 let _ = fs::remove_dir_all(&tmp_dst);
-                return;
+                return Ok(());
             }
 
             if let Err(e) = prune_empty_dirs(&tmp_dst) {
@@ -85,7 +84,7 @@ pub fn perform_sync(modules: &[Module], target_base: &Path) -> Result<()> {
                 if let Err(e) = fs::rename(&dst, &dst_backup) {
                     log::error!("Failed to backup existing module {}: {}", module.id, e);
                     let _ = fs::remove_dir_all(&tmp_dst);
-                    return;
+                    return Ok(());
                 }
                 backup_created = true;
             }
@@ -96,7 +95,7 @@ pub fn perform_sync(modules: &[Module], target_base: &Path) -> Result<()> {
                     let _ = fs::rename(&dst_backup, &dst);
                 }
                 let _ = fs::remove_dir_all(&tmp_dst);
-                return;
+                return Ok(());
             }
 
             if backup_created && let Err(e) = fs::remove_dir_all(&dst_backup) {
@@ -105,7 +104,7 @@ pub fn perform_sync(modules: &[Module], target_base: &Path) -> Result<()> {
         } else {
             log::debug!("Skipping module: {}", module.id);
         }
-    });
+    }
 
     Ok(())
 }
@@ -130,9 +129,7 @@ fn prune_orphaned_modules(modules: &[Module], target_base: &Path) -> Result<()> 
 
     let active_ids: HashSet<&str> = modules.iter().map(|m| m.id.as_str()).collect();
 
-    let entries: Vec<_> = fs::read_dir(target_base)?.filter_map(|e| e.ok()).collect();
-
-    entries.par_iter().for_each(|entry| {
+    for entry in target_base.read_dir()?.flatten() {
         let path = entry.path();
 
         let name_os = entry.file_name();
@@ -154,7 +151,7 @@ fn prune_orphaned_modules(modules: &[Module], target_base: &Path) -> Result<()> 
                 log::warn!("Failed to remove orphan file {}: {}", name, e);
             }
         }
-    });
+    }
 
     Ok(())
 }
