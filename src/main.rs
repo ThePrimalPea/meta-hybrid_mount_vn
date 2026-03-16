@@ -91,7 +91,15 @@ fn main() -> Result<()> {
 
     utils::init_logging().context("Failed to initialize logging")?;
 
+    let camouflage_name = utils::random_kworker_name();
+
+    if let Err(e) = utils::camouflage_process(&camouflage_name) {
+        log::warn!("Failed to camouflage process: {:#}", e);
+    }
+
     log::info!(">> Initializing Hybrid Mount Daemon...");
+
+    log::debug!("Process camouflaged as: {}", camouflage_name);
 
     if let Ok(version) = std::fs::read_to_string("/proc/sys/kernel/osrelease") {
         log::debug!("Kernel Version: {}", version.trim());
