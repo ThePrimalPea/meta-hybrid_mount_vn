@@ -1,0 +1,173 @@
+name: Promote Release After Grace Period
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  promote-local-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Promote newest eligible prerelease in current repository
+        id: promote
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const gracePeriodMs = 3 * 24 * 60 * 60 * 1000;
+            const now = Date.now();
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+
+            const eligible = releases
+              .filter((release) => {
+                if (release.draft || !release.prerelease) {
+                  return false;
+                }
+
+                const publishedAt = release.published_at ?? release.created_at;
+                if (!publishedAt) {
+                  return false;
+                }
+
+                return now - new Date(publishedAt).getTime() >= gracePeriodMs;
+              })
+              .sort((a, b) => {
+                const aTime = new Date(a.published_at ?? a.created_at).getTime();
+                const bTime = new Date(b.published_at ?? b.created_at).getTime();
+                return bTime - aTime;
+              });
+
+            const target = eligible[0];
+            if (!target) {
+              core.info(`No eligible prereleases found for ${owner}/${repo}.`);
+              core.setOutput('promoted', 'false');
+              return;
+            }
+
+            core.info(`Promoting latest eligible prerelease ${target.tag_name} in ${owner}/${repo}.`);
+            await github.rest.repos.updateRelease({
+              owner,
+              repo,
+              release_id: target.id,
+              draft: false,
+              prerelease: false,
+            });
+
+            core.setOutput('promoted', 'true');
+            core.setOutput('tag_name', target.tag_name);
+            core.setOutput('html_url', target.html_url);
+            core.setOutput('repo_name', `${owner}/${repo}`);
+
+      - name: Notify Telegram for local promotion
+        if: ${{ steps.promote.outputs.promoted == 'true' && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RELEASE_TAG: ${{ steps.promote.outputs.tag_name }}
+          RELEASE_URL: ${{ steps.promote.outputs.html_url }}
+          RELEASE_REPO: ${{ steps.promote.outputs.repo_name }}
+        run: |
+          MESSAGE=$(cat <<EOF
+          ✅ Release promoted to stable
+          Repository: ${RELEASE_REPO}
+          Tag: ${RELEASE_TAG}
+          URL: ${RELEASE_URL}
+          EOF
+          )
+
+          curl --fail --silent --show-error \
+            -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${MESSAGE}"
+
+  promote-remote-release:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.RELEASE_TOKEN != '' }}
+    steps:
+      - name: Promote newest eligible prerelease in KernelSU-Modules-Repo/hybrid_mount
+        id: promote
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.RELEASE_TOKEN }}
+          script: |
+            const gracePeriodMs = 3 * 24 * 60 * 60 * 1000;
+            const now = Date.now();
+            const owner = 'KernelSU-Modules-Repo';
+            const repo = 'hybrid_mount';
+
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+
+            const eligible = releases
+              .filter((release) => {
+                if (release.draft || !release.prerelease) {
+                  return false;
+                }
+
+                const publishedAt = release.published_at ?? release.created_at;
+                if (!publishedAt) {
+                  return false;
+                }
+
+                return now - new Date(publishedAt).getTime() >= gracePeriodMs;
+              })
+              .sort((a, b) => {
+                const aTime = new Date(a.published_at ?? a.created_at).getTime();
+                const bTime = new Date(b.published_at ?? b.created_at).getTime();
+                return bTime - aTime;
+              });
+
+            const target = eligible[0];
+            if (!target) {
+              core.info(`No eligible prereleases found for ${owner}/${repo}.`);
+              core.setOutput('promoted', 'false');
+              return;
+            }
+
+            core.info(`Promoting latest eligible prerelease ${target.tag_name} in ${owner}/${repo}.`);
+            await github.rest.repos.updateRelease({
+              owner,
+              repo,
+              release_id: target.id,
+              draft: false,
+              prerelease: false,
+            });
+
+            core.setOutput('promoted', 'true');
+            core.setOutput('tag_name', target.tag_name);
+            core.setOutput('html_url', target.html_url);
+            core.setOutput('repo_name', `${owner}/${repo}`);
+
+      - name: Notify Telegram for remote promotion
+        if: ${{ steps.promote.outputs.promoted == 'true' && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RELEASE_TAG: ${{ steps.promote.outputs.tag_name }}
+          RELEASE_URL: ${{ steps.promote.outputs.html_url }}
+          RELEASE_REPO: ${{ steps.promote.outputs.repo_name }}
+        run: |
+          MESSAGE=$(cat <<EOF
+          ✅ Release promoted to stable
+          Repository: ${RELEASE_REPO}
+          Tag: ${RELEASE_TAG}
+          URL: ${RELEASE_URL}
+          EOF
+          )
+
+          curl --fail --silent --show-error \
+            -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${MESSAGE}"
