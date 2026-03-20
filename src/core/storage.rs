@@ -273,7 +273,7 @@ where
     ensure!(result.status.success(), "Failed to format ext4 image");
 
     check_image(img_path)?;
-    let _ = lsetfilecon(img_path, "u:object_r:system_file:s0");
+    let _ = lsetfilecon(img_path, "u:object_r:ksu_file:s0");
     ensure_dir_exists(target)?;
 
     if overlay_utils::mount_ext4(img_path, target).is_err() {
@@ -332,13 +332,13 @@ fn create_erofs_image(src_dir: &Path, image_path: &Path) -> Result<()> {
     }
 
     let _ = fs::set_permissions(image_path, fs::Permissions::from_mode(0o644));
-    let _ = lsetfilecon(image_path, "u:object_r:system_file:s0");
+    let _ = lsetfilecon(image_path, "u:object_r:ksu_file:s0");
     Ok(())
 }
 
 fn mount_erofs_image(image_path: &Path, target: &Path) -> Result<()> {
     ensure_dir_exists(target)?;
-    let _ = lsetfilecon(image_path, "u:object_r:system_file:s0");
+    let _ = lsetfilecon(image_path, "u:object_r:ksu_file:s0");
 
     let lc = LoopControl::open()?;
     let ld = lc.next_free()?;
