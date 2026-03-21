@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::{
+    collections::HashSet,
     fs,
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -85,14 +87,31 @@ impl StorageBackend for TmpfsBackend {
 
 fn calculate_total_size(path: &Path) -> Result<u64> {
     let mut total_size = 0;
-    if path.is_dir() {
-        for entry in fs::read_dir(path)? {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            if file_type.is_file() {
-                total_size += entry.metadata()?.len();
-            } else if file_type.is_dir() {
-                total_size += calculate_total_size(&entry.path())?;
+    let mut visited_node_map = HashSet::new();
+    let mut stack = vec![path.to_path_buf()];
+
+    while let Some(c) = stack.pop() {
+        let md = fs::metadata(&c)?;
+        if c.is_file() {
+            let dev = md.dev();
+            let ino = md.ino();
+
+            if !visited_node_map.insert((dev, ino)) {
+                continue;
+            }
+
+            let blocks = md.blocks();
+            total_size += blocks as u64 * 512;
+        } else if c.is_dir() {
+            match c.read_dir() {
+                Ok(r) => {
+                    for i in r.flatten() {
+                        stack.push(i.path());
+                    }
+                }
+                Err(_e) => {
+                    log::error!("Failed to read dir {}", c.display());
+                }
             }
         }
     }
