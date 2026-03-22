@@ -5,11 +5,6 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch:
 
-env:
-  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-  RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-
 jobs:
   promote-local-release:
     runs-on: ubuntu-latest
@@ -73,8 +68,10 @@ jobs:
             core.setOutput('repo_name', `${owner}/${repo}`);
 
       - name: Notify Telegram for local promotion
-        if: ${{ steps.promote.outputs.promoted == 'true' && env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
+        if: ${{ steps.promote.outputs.promoted == 'true' && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
         env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RELEASE_TAG: ${{ steps.promote.outputs.tag_name }}
           RELEASE_URL: ${{ steps.promote.outputs.html_url }}
           RELEASE_REPO: ${{ steps.promote.outputs.repo_name }}
@@ -94,10 +91,10 @@ jobs:
 
   promote-remote-release:
     runs-on: ubuntu-latest
+    if: ${{ secrets.RELEASE_TOKEN != '' }}
     steps:
       - name: Promote newest eligible prerelease in KernelSU-Modules-Repo/hybrid_mount
         id: promote
-        if: ${{ env.RELEASE_TOKEN != '' }}
         uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.RELEASE_TOKEN }}
@@ -154,8 +151,10 @@ jobs:
             core.setOutput('repo_name', `${owner}/${repo}`);
 
       - name: Notify Telegram for remote promotion
-        if: ${{ steps.promote.outputs.promoted == 'true' && env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
+        if: ${{ steps.promote.outputs.promoted == 'true' && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
         env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RELEASE_TAG: ${{ steps.promote.outputs.tag_name }}
           RELEASE_URL: ${{ steps.promote.outputs.html_url }}
           RELEASE_REPO: ${{ steps.promote.outputs.repo_name }}
