@@ -1,4 +1,24 @@
-## v3.1.6
+## v3.2.1
+
+Changes since v3.2.0:
+* chore: remove unused update_desc
+* Revert "ci: promote only latest prereleases"
+* Revert "ci(workflow): fix unrecognized 'secrets' context in if conditions"
+* sync: sync magic mount updates from upstream
+* adj: removed normalize_module_layout
+* chore(deps): bump the crates group with 2 updates
+* chore(tools): update notify binary [skip ci]
+* chore(deps): bump rustls-webpki
+* chore: bump webui submodule
+* Update dependabot.yml
+* Remove leftover EROFS module tool
+* refactor: Fixed the issue with the size of the statistics
+* BREAKING CHANGE: feat: The erofs is marked as deprecated
+* ci: add caches to compilation workflows
+* xtask: adj: adj target platform(https://github.com/Tools-cx-app/meta-magic_mount-rs/pull/31)
+* Fix EROFS magic fallback and logging
+* Fix EROFS empty remount handling
+* ci(workflow): fix unrecognized 'secrets' context in if conditions## v3.1.6
 
 Changes since v3.1.5:
 * chore: fmt
