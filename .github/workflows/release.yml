@@ -79,15 +79,15 @@ jobs:
           ZIP_NAME=$(basename "$ZIP_FILE")
           REPO="${{ github.repository }}"
           TAG="${{ github.ref_name }}"
-
+          
           CLEAN_VERSION="${TAG#v}"
           VERSION_CODE=$(echo $CLEAN_VERSION | awk -F. '{printf "%d%02d%02d", $1, $2, $3}')
-
+          
           echo "ZIP_PATH=output/$ZIP_NAME" >> $GITHUB_ENV
-
+          
           DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/$ZIP_NAME"
           CHANGELOG_URL="https://raw.githubusercontent.com/$REPO/master/changelog.md"
-
+          
           cat <<EOF > /tmp/update.json
           {
             "version": "$TAG",
@@ -96,7 +96,7 @@ jobs:
             "changelog": "$CHANGELOG_URL"
           }
           EOF
-
+          
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           echo "## $TAG" > /tmp/changelog.md
           echo "" >> /tmp/changelog.md
@@ -112,10 +112,10 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           draft: false
-          prerelease: true
+          prerelease: false
           files: ${{ env.ZIP_PATH }}
           body_path: /tmp/changelog.md
-
+          
       - name: Create Remote Release (KernelSU-Repo)
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
@@ -124,7 +124,7 @@ jobs:
           repository: KernelSU-Modules-Repo/hybrid_mount
           tag_name: ${{ github.ref_name }}
           draft: false
-          prerelease: true
+          prerelease: false
           files: ${{ env.ZIP_PATH }}
           body_path: /tmp/changelog.md
 
@@ -133,15 +133,15 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
+          
           git fetch origin master
           git checkout master
-
+          
           mv /tmp/update.json update.json
           cat /tmp/changelog.md | cat - changelog.md > temp && mv temp changelog.md
-
+          
           git add update.json changelog.md Cargo.toml
-
+          
           if ! git diff --staged --quiet; then
             git commit -m "chore(release): sync version ${{ github.ref_name }} [skip ci]"
             git push origin master
