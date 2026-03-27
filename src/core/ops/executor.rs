@@ -1,6 +1,3 @@
-// Copyright 2026 Hybrid Mount Developers
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 use std::{collections::HashSet, path::Path};
 
 use anyhow::{Context, Result, bail};
@@ -92,13 +89,11 @@ impl Executer {
             log::info!("[executor] overlayfs unsupported, no overlay operations to apply");
         }
 
-        let mut magic_queue: Vec<String> = final_magic_ids.iter().cloned().collect();
-        magic_queue.sort();
+        let mut magic_need_list: Vec<String> = final_magic_ids.iter().cloned().collect();
+        magic_need_list.sort();
 
-        if !magic_queue.is_empty() {
-            let magic_need_ids: HashSet<String> = magic_queue.into_iter().collect();
-            let mut magic_need_list: Vec<String> = magic_need_ids.iter().cloned().collect();
-            magic_need_list.sort();
+        if !magic_need_list.is_empty() {
+            let magic_need_ids: HashSet<String> = magic_need_list.iter().cloned().collect();
             log::info!(
                 "[executor] applying magic mount for modules: {}",
                 magic_need_list.join(", ")
@@ -182,7 +177,7 @@ impl Executer {
 
         let mut mount_source = config.mountsource.clone();
 
-        if defs::IGNORE_UNOUNT_PARTITIONS
+        if defs::IGNORE_UNMOUNT_PARTITIONS
             .iter()
             .any(|s| s.trim() == op.target.trim())
         {

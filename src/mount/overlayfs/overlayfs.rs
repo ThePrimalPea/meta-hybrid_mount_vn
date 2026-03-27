@@ -1,5 +1,3 @@
-// Copyright 2026 https://github.com/KernelSU-Modules-Repo/meta-overlayfs
-
 use std::{
     ffi::CString,
     os::fd::AsFd,
@@ -96,7 +94,11 @@ pub fn mount_overlayfs(
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let staging_dir = Path::new(defs::RUN_DIR).join(format!("staging_{}", timestamp));
+        let staging_dir = Path::new(defs::RUN_DIR).join(format!(
+            "staging_{}_{}",
+            timestamp,
+            current_layers.len()
+        ));
 
         ensure_dir_exists(&staging_dir)?;
 
@@ -131,13 +133,23 @@ pub fn bind_mount(from: impl AsRef<Path>, to: impl AsRef<Path>) -> Result<()> {
             | OpenTreeFlags::AT_RECURSIVE,
     ) {
         Result::Ok(tree) => {
-            move_mount(
+            if move_mount(
                 tree.as_fd(),
                 "",
                 CWD,
                 to.as_ref(),
                 MoveMountFlags::MOVE_MOUNT_F_EMPTY_PATH,
-            )?;
+            )
+            .is_err()
+            {
+                mount(
+                    from.as_ref(),
+                    to.as_ref(),
+                    "",
+                    MountFlags::BIND | MountFlags::REC,
+                    None,
+                )?;
+            }
         }
         _ => {
             mount(

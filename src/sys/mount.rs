@@ -1,6 +1,3 @@
-// Copyright 2026 Hybrid Mount Developers
-// SPDX-License-Identifier: GPL-3.0-or-later
-
 use std::{path::Path, process::Command};
 
 use anyhow::{Context, Result, bail};
@@ -17,11 +14,15 @@ pub fn detect_mount_source() -> String {
 }
 
 pub fn is_mounted<P: AsRef<Path>>(path: P) -> bool {
-    let Some(path) = path.as_ref().to_str() else {
+    let Some(path_str) = path.as_ref().to_str() else {
         return false;
     };
 
-    let search = path.trim_end_matches('/');
+    let search = if path_str == "/" {
+        "/"
+    } else {
+        path_str.trim_end_matches('/')
+    };
 
     if let Ok(process) = Process::myself()
         && let Ok(mountinfo) = process.mountinfo()
