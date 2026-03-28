@@ -19,7 +19,6 @@ pub const REMOVE_FILE_NAME: &str = "remove";
 pub const SKIP_MOUNT_FILE_NAME: &str = "skip_mount";
 pub const REPLACE_DIR_FILE_NAME: &str = ".replace";
 pub const REPLACE_DIR_XATTR: &str = "trusted.overlay.opaque";
-pub const TRACING: &str = concatcp!(HYBRID_MOUNT_DIR, "/.tracing");
 
 pub const BUILTIN_PARTITIONS: &[&str] = &[
     "system",

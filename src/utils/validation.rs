@@ -18,7 +18,6 @@ static MODULE_ID_REGEX: OnceLock<Regex> = OnceLock::new();
 
 pub fn check_ksu() {
     let status = ksu::version().is_some();
-    log::trace!("ksu: {status}");
     KSU.store(status, Ordering::Relaxed);
 }
 

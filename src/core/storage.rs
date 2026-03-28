@@ -179,12 +179,10 @@ pub fn setup(
     }
 
     if is_mounted(mnt_base) {
-        log::trace!("{} was mounted, umounting", mnt_base.display());
         let _ = umount(mnt_base, UnmountFlags::DETACH);
     }
 
     let try_hide = |path: &Path| {
-        log::trace!("trying hide {}", path.display());
         #[cfg(any(target_os = "linux", target_os = "android"))]
         if !disable_umount {
             let _ = send_umountable(path);
@@ -194,7 +192,6 @@ pub fn setup(
     };
 
     let make_private = |path: &Path| {
-        log::trace!("trying make {} is private", path.display());
         let _ = mount_change(path, MountPropagationFlags::PRIVATE);
     };
 
@@ -264,7 +261,6 @@ where
 
     fs::File::create(img_path)?.set_len(grow_size)?;
 
-    log::trace!("formating image");
     let result = Command::new("mkfs.ext4")
         .arg("-b")
         .arg("1024")
