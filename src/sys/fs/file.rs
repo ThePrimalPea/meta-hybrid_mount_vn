@@ -18,30 +18,16 @@ use super::xattr::internal_copy_extended_attributes;
 
 pub fn atomic_write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C) -> Result<()> {
     let path = path.as_ref();
-    let dir = path.parent().unwrap_or_else(|| Path::new("."));
 
     let tempfile = tempfile::Builder::new().tempfile()?;
 
-    {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tempfile)?;
-        file.write_all(content.as_ref())?;
-        file.sync_all()?;
-    }
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tempfile)?;
+    file.write_all(content.as_ref())?;
 
-    if let Err(_e) = fs::rename(&tempfile, path) {
-        if let Err(copy_err) = fs::copy(&tempfile, path) {
-            let _ = fs::remove_file(&tempfile);
-            return Err(copy_err).context("atomic_write copy fallback failed");
-        }
-        let _ = fs::remove_file(&tempfile);
-    }
-
-    File::open(dir)
-        .and_then(|f| f.sync_all())
-        .with_context(|| format!("failed to fsync parent dir for {}", path.display()))?;
+    fs::rename(tempfile.path(), path)?;
 
     Ok(())
 }
