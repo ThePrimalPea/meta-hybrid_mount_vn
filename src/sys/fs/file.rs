@@ -8,7 +8,6 @@ use std::{
     io::Write,
     os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt, symlink},
     path::Path,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result, bail};
@@ -21,29 +20,23 @@ pub fn atomic_write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C) -> Resu
     let path = path.as_ref();
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
 
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let pid = std::process::id();
-    let temp_name = format!(".{}_{}.tmp", pid, now);
-    let temp_file = dir.join(temp_name);
+    let tempfile = tempfile::Builder::new().tempfile()?;
 
     {
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
-            .open(&temp_file)?;
+            .open(&tempfile)?;
         file.write_all(content.as_ref())?;
         file.sync_all()?;
     }
 
-    if let Err(_e) = fs::rename(&temp_file, path) {
-        if let Err(copy_err) = fs::copy(&temp_file, path) {
-            let _ = fs::remove_file(&temp_file);
+    if let Err(_e) = fs::rename(&tempfile, path) {
+        if let Err(copy_err) = fs::copy(&tempfile, path) {
+            let _ = fs::remove_file(&tempfile);
             return Err(copy_err).context("atomic_write copy fallback failed");
         }
-        let _ = fs::remove_file(&temp_file);
+        let _ = fs::remove_file(&tempfile);
     }
 
     File::open(dir)
