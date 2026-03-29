@@ -4,7 +4,7 @@
 use std::{
     collections::HashSet,
     ffi::CString,
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::Write,
     os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt, symlink},
     path::Path,
@@ -19,13 +19,9 @@ use super::xattr::internal_copy_extended_attributes;
 pub fn atomic_write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C) -> Result<()> {
     let path = path.as_ref();
 
-    let tempfile = tempfile::Builder::new().tempfile()?;
+    let mut tempfile = tempfile::Builder::new().tempfile()?;
 
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&tempfile)?;
-    file.write_all(content.as_ref())?;
+    tempfile.write_all(content.as_ref())?;
 
     fs::rename(tempfile.path(), path)?;
 
