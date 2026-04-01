@@ -134,6 +134,7 @@ fn generate_with_root(
     let mut magic_ids = HashSet::new();
 
     let sensitive_partitions: HashSet<&str> = defs::SENSITIVE_PARTITIONS.iter().cloned().collect();
+    let extra_partitions: HashSet<&str> = config.partitions.iter().map(String::as_str).collect();
     let managed_partitions = build_managed_partitions(config);
 
     for module in modules {
@@ -220,6 +221,7 @@ fn generate_with_root(
                         .unwrap_or_default();
 
                     let should_split = sensitive_partitions.contains(target_name.as_ref())
+                        || extra_partitions.contains(target_name.as_ref())
                         || target_name == "system";
 
                     if should_split {
