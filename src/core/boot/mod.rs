@@ -1,0 +1,47 @@
+// Copyright 2026 Hybrid Mount Developers
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+mod recovery;
+
+use anyhow::{Context, Result};
+
+use crate::{
+    conf::{
+        cli::Cli,
+        config::Config,
+        loader::{self, LoadPolicy},
+    },
+    defs, sys, utils,
+};
+
+fn load_final_config(cli: &Cli) -> Result<Config> {
+    let mut config = loader::load_config(cli, LoadPolicy::FallbackToDefault)?;
+    config.merge_with_cli(
+        cli.moduledir.clone(),
+        cli.mountsource.clone(),
+        cli.partitions.clone(),
+    );
+    Ok(config)
+}
+
+pub fn run(cli: &Cli) -> Result<()> {
+    sys::fs::ensure_dir_exists(defs::RUN_DIR)
+        .with_context(|| format!("Failed to create run directory: {}", defs::RUN_DIR))?;
+
+    let config = load_final_config(cli)?;
+
+    utils::init_logging().context("Failed to initialize logging")?;
+    log::info!(">> Initializing Hybrid Mount Daemon...");
+
+    if let Ok(version) = std::fs::read_to_string("/proc/sys/kernel/osrelease") {
+        log::debug!("Kernel Version: {}", version.trim());
+    }
+
+    utils::check_ksu();
+
+    if config.disable_umount {
+        log::warn!("!! Umount is DISABLED via config.");
+    }
+
+    recovery::run(config)
+}
