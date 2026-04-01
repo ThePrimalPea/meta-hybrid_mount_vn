@@ -6,10 +6,7 @@ mod skip_markers;
 
 use anyhow::{Context, Result};
 
-use self::{
-    retry_state::{RecoveryDecision, RecoveryState},
-    skip_markers::mark_failed_modules,
-};
+use self::retry_state::{RecoveryDecision, RecoveryState};
 use crate::{
     conf::config::Config,
     core::{MountController, recovery::ModuleStageFailure},
@@ -68,11 +65,7 @@ pub fn run(config: Config) -> Result<()> {
                         );
                     }
 
-                    let action = mark_failed_modules(
-                        &module_failure.module_ids,
-                        state.module_dirs(),
-                        state.auto_skipped_mut(),
-                    )?;
+                    let action = state.mark_failed_modules(&module_failure.module_ids)?;
 
                     if !action.already_marked.is_empty() {
                         log::debug!(

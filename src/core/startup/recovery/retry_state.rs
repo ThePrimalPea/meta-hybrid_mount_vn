@@ -8,6 +8,7 @@ use std::{
 
 use anyhow::Result;
 
+use super::skip_markers::{self, MarkOutcome};
 use crate::conf::config::Config;
 
 pub(super) enum RecoveryDecision {
@@ -51,12 +52,8 @@ impl RecoveryState {
         self.max_restarts
     }
 
-    pub(super) fn module_dirs(&self) -> &HashMap<String, PathBuf> {
-        &self.module_dirs
-    }
-
-    pub(super) fn auto_skipped_mut(&mut self) -> &mut HashSet<String> {
-        &mut self.auto_skipped
+    pub(super) fn mark_failed_modules(&mut self, module_ids: &[String]) -> Result<MarkOutcome> {
+        skip_markers::mark_failed_modules(module_ids, &self.module_dirs, &mut self.auto_skipped)
     }
 
     pub(super) fn handle_unattributed_failure(&mut self, stage: String) -> RecoveryDecision {
