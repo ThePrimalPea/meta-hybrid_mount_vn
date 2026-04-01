@@ -1,14 +1,14 @@
 // Copyright 2026 Hybrid Mount Developers
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-mod markers;
-mod state;
+mod retry_state;
+mod skip_markers;
 
 use anyhow::{Context, Result};
 
 use self::{
-    markers::mark_failed_modules,
-    state::{RecoveryDecision, RecoveryState},
+    retry_state::{RecoveryDecision, RecoveryState},
+    skip_markers::mark_failed_modules,
 };
 use crate::{
     conf::config::Config,

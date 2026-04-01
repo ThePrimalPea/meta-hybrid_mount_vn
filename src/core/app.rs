@@ -10,5 +10,5 @@ pub fn run(cli: Cli) -> Result<()> {
         return core::cli_commands::run(&cli, command);
     }
 
-    core::boot::run(&cli)
+    core::startup::run(&cli)
 }

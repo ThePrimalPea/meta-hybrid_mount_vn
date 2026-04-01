@@ -24,7 +24,7 @@ pub(super) struct RecoveryState {
 
 impl RecoveryState {
     pub(super) fn new(config: &Config) -> anyhow::Result<Self> {
-        let module_dirs = super::markers::list_module_dirs(&config.moduledir)?;
+        let module_dirs = super::skip_markers::list_module_dirs(&config.moduledir)?;
         let max_restarts = module_dirs.len().saturating_add(1);
         log::info!(
             "[stage:recovery] initialized: module_candidates={}, restart_limit={}",
