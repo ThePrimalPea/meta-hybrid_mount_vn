@@ -1,14 +1,20 @@
 name: Update WebUI Submodule
 
 on:
+  repository_dispatch:
+    types:
+      - webui-updated
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
 
+concurrency:
+  group: update-webui-dev
+  cancel-in-progress: false
+
 jobs:
   update-webui:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/dev'
     permissions:
       contents: write
 
@@ -16,23 +22,53 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
+          persist-credentials: false
+          ref: dev
           fetch-depth: 0
           submodules: recursive
 
+      - name: Show trigger context
+        run: |
+          echo "event_name=${{ github.event_name }}"
+          echo "ref=${{ github.ref }}"
+          echo "sha=${{ github.sha }}"
+          if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
+            echo "source_repository=${{ github.event.client_payload.source_repository }}"
+            echo "source_branch=${{ github.event.client_payload.source_branch }}"
+            echo "source_sha=${{ github.event.client_payload.source_sha }}"
+          fi
+
       - name: Update webui submodule
         run: |
-          git submodule update --init --remote webui
+          git submodule sync -- webui
+          if [[ "${{ github.event_name }}" == "repository_dispatch" ]] && [[ -n "${{ github.event.client_payload.source_branch }}" ]]; then
+            SOURCE_BRANCH="${{ github.event.client_payload.source_branch }}"
+            git -C webui fetch origin "${SOURCE_BRANCH}"
+            git -C webui checkout --detach "origin/${SOURCE_BRANCH}"
+          else
+            git submodule update --init --remote --checkout webui
+          fi
 
       - name: Commit and push if changed
+        env:
+          TARGET_TOKEN: ${{ secrets.META_HYBRID_MOUNT_REPO_TOKEN }}
         run: |
           if git diff --quiet -- webui; then
             echo "No webui submodule updates"
             exit 0
           fi
 
+          if [[ -z "${TARGET_TOKEN}" ]]; then
+            echo "META_HYBRID_MOUNT_REPO_TOKEN is required so the push to dev can trigger CI."
+            exit 1
+          fi
+
+          WEBUI_SHA=$(git -C webui rev-parse --short=12 HEAD)
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${TARGET_TOKEN}@github.com/${{ github.repository }}.git"
 
           git add webui
-          git commit -m "chore(submodule): update webui"
-          git push
+          git commit -m "chore(submodule): update webui to ${WEBUI_SHA}"
+          git push origin HEAD:dev
