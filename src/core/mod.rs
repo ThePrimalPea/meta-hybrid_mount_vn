@@ -4,14 +4,14 @@
 pub mod app;
 pub mod backend;
 pub mod boot;
-pub mod commands;
-pub mod finalize;
+pub mod cli_commands;
+pub mod controller;
+pub mod finalization;
 pub mod inventory;
-pub mod manager;
 pub mod module_description;
 pub mod ops;
 pub mod recovery;
-pub mod state;
+pub mod runtime_state;
 pub mod storage;
 
-pub use manager::MountController;
+pub use controller::MountController;

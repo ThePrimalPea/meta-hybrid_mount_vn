@@ -16,7 +16,7 @@ use serde::Serialize;
 use super::scanner;
 use crate::{
     conf::config::{self, MountMode},
-    core::state::RuntimeState,
+    core::runtime_state::RuntimeState,
 };
 
 static MODULE_PROP_REGEX: OnceLock<Regex> = OnceLock::new();

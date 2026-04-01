@@ -8,7 +8,7 @@ use anyhow::Result;
 use crate::core::{
     module_description,
     ops::{executor::ExecutionResult, planner::MountPlan},
-    state::RuntimeState,
+    runtime_state::RuntimeState,
 };
 
 pub fn finalize(

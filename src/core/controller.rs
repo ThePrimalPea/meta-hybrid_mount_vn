@@ -8,7 +8,7 @@ use anyhow::Result;
 use crate::{
     conf::config::Config,
     core::{
-        finalize,
+        finalization,
         inventory::{self},
         ops::{
             executor::{self},
@@ -173,7 +173,7 @@ impl MountController<Planned> {
 impl MountController<Executed> {
     pub fn finalize(self) -> Result<()> {
         log::info!("[stage:finalize] writing runtime state and module descriptions");
-        finalize::finalize(
+        finalization::finalize(
             self.state.handle.mode(),
             self.state.handle.mount_point(),
             &self.state.plan,

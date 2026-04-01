@@ -7,7 +7,7 @@ use crate::{conf::cli::Cli, core};
 
 pub fn run(cli: Cli) -> Result<()> {
     if let Some(command) = &cli.command {
-        return core::commands::run(&cli, command);
+        return core::cli_commands::run(&cli, command);
     }
 
     core::boot::run(&cli)
