@@ -8,9 +8,12 @@ use std::{
 };
 
 use anyhow::Result;
+#[cfg(any(target_os = "linux", target_os = "android"))]
 use ksu::{TryUmount, TryUmountFlags};
+#[cfg(any(target_os = "linux", target_os = "android"))]
 use rustix::path::Arg;
 
+#[cfg(any(target_os = "linux", target_os = "android"))]
 pub static LIST: LazyLock<Mutex<TryUmount>> = LazyLock::new(|| Mutex::new(TryUmount::new()));
 static HISTORY: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 
@@ -18,36 +21,53 @@ pub fn send_umountable<P>(target: P) -> Result<()>
 where
     P: AsRef<Path>,
 {
-    if !crate::utils::KSU.load(std::sync::atomic::Ordering::Relaxed) {
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    {
+        let _ = target;
         return Ok(());
     }
 
-    let target = target.as_ref();
-    let path = target.as_str()?;
-    let mut history = HISTORY
-        .lock()
-        .map_err(|_| anyhow::anyhow!("Failed to lock history mutex"))?;
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        if !crate::utils::KSU.load(std::sync::atomic::Ordering::Relaxed) {
+            return Ok(());
+        }
 
-    history.insert(path.to_string());
-    LIST.lock()
-        .map_err(|_| anyhow::anyhow!("Failed to lock umount list"))?
-        .add(target);
-    Ok(())
+        let target = target.as_ref();
+        let path = target.as_str()?;
+        let mut history = HISTORY
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Failed to lock history mutex"))?;
+
+        history.insert(path.to_string());
+        LIST.lock()
+            .map_err(|_| anyhow::anyhow!("Failed to lock umount list"))?
+            .add(target);
+        Ok(())
+    }
 }
 
 pub fn commit() -> Result<()> {
-    if !crate::utils::KSU.load(std::sync::atomic::Ordering::Relaxed) {
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    {
         return Ok(());
     }
-    let mut list = LIST
-        .lock()
-        .map_err(|_| anyhow::anyhow!("Failed to lock umount list"))?;
 
-    list.format_msg(|p| format!("{p:?} umount successful "));
-    list.flags(TryUmountFlags::MNT_DETACH);
-    if let Err(e2) = list.umount() {
-        log::warn!("try_umount failed: {:#}", e2);
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        if !crate::utils::KSU.load(std::sync::atomic::Ordering::Relaxed) {
+            return Ok(());
+        }
+        let mut list = LIST
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Failed to lock umount list"))?;
+
+        list.format_msg(|p| format!("{p:?} umount successful "));
+        list.flags(TryUmountFlags::MNT_DETACH);
+        if let Err(e2) = list.umount() {
+            log::warn!("try_umount failed: {:#}", e2);
+        }
+
+        Ok(())
     }
-
-    Ok(())
 }

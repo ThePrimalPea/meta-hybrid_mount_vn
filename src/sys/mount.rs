@@ -4,14 +4,18 @@
 use std::{path::Path, process::Command};
 
 use anyhow::{Context, Result, bail};
+#[cfg(any(target_os = "linux", target_os = "android"))]
 use procfs::process::Process;
 use rustix::mount::{MountFlags, mount};
 
 use crate::sys::fs::ensure_dir_exists;
 
 pub fn detect_mount_source() -> String {
-    if ksu::version().is_some() {
-        return "KSU".to_string();
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        if ksu::version().is_some() {
+            return "KSU".to_string();
+        }
     }
     "APatch".to_string()
 }
@@ -27,12 +31,15 @@ pub fn is_mounted<P: AsRef<Path>>(path: P) -> bool {
         path_str.trim_end_matches('/')
     };
 
-    if let Ok(process) = Process::myself()
-        && let Ok(mountinfo) = process.mountinfo()
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     {
-        return mountinfo
-            .into_iter()
-            .any(|m| m.mount_point.to_string_lossy() == search);
+        if let Ok(process) = Process::myself()
+            && let Ok(mountinfo) = process.mountinfo()
+        {
+            return mountinfo
+                .into_iter()
+                .any(|m| m.mount_point.to_string_lossy() == search);
+        }
     }
 
     false

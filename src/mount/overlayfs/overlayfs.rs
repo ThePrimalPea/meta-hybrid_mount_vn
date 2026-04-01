@@ -9,6 +9,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
+#[cfg(any(target_os = "linux", target_os = "android"))]
 use procfs::process::Process;
 use rustix::{
     fs::CWD,
@@ -25,6 +26,32 @@ use crate::{
 };
 
 const MAX_LAYERS: usize = 64;
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn collect_child_mount_points(root_path: &Path) -> Result<Vec<String>> {
+    let mounts = Process::myself()?
+        .mountinfo()
+        .with_context(|| "get mountinfo")?;
+
+    let mut mount_seq = mounts
+        .0
+        .iter()
+        .filter(|m| {
+            let mp = Path::new(&m.mount_point);
+            mp.starts_with(root_path) && mp != root_path
+        })
+        .filter_map(|m| m.mount_point.to_str().map(|p| p.to_string()))
+        .collect::<Vec<_>>();
+
+    mount_seq.sort();
+    mount_seq.dedup();
+    Ok(mount_seq)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn collect_child_mount_points(_root_path: &Path) -> Result<Vec<String>> {
+    Ok(Vec::new())
+}
 
 fn mount_overlay_core(
     lower_dirs: &[String],
@@ -226,30 +253,12 @@ pub fn mount_overlay(
     std::env::set_current_dir(root).with_context(|| format!("failed to chdir to {root}"))?;
     let stock_root = ".";
 
-    let mounts = Process::myself()?
-        .mountinfo()
-        .with_context(|| "get mountinfo")?;
-
     let root_path = Path::new(root);
-    let mut mount_seq = mounts
-        .0
-        .iter()
-        .filter(|m| {
-            let mp = Path::new(&m.mount_point);
-            mp.starts_with(root_path) && mp != root_path
-        })
-        .map(|m| m.mount_point.to_str())
-        .collect::<Vec<_>>();
-
-    mount_seq.sort();
-    mount_seq.dedup();
+    let mount_seq = collect_child_mount_points(root_path)?;
 
     mount_overlayfs(module_roots, root, upperdir, workdir, root, mount_source)
         .with_context(|| "mount overlayfs for root failed")?;
-    for mount_point in mount_seq.iter() {
-        let Some(mount_point) = mount_point else {
-            continue;
-        };
+    for mount_point in &mount_seq {
         let relative = mount_point.replacen(root, "", 1);
         let stock_root: String = format!("{stock_root}{relative}");
         if !Path::new(&stock_root).exists() {

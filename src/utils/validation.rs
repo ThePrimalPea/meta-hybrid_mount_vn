@@ -17,7 +17,12 @@ pub static KSU: AtomicBool = AtomicBool::new(false);
 static MODULE_ID_REGEX: OnceLock<Regex> = OnceLock::new();
 
 pub fn check_ksu() {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     let status = ksu::version().is_some();
+
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    let status = false;
+
     KSU.store(status, Ordering::Relaxed);
 }
 

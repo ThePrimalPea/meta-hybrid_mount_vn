@@ -1,16 +1,16 @@
 // Copyright 2026 https://github.com/KernelSU-Modules-Repo/meta-overlayfs and https://github.com/bmax121/APatch
 
+use std::{fs, io::Read, path::Path};
 #[cfg(any(target_os = "linux", target_os = "android"))]
-use std::{fs, os::unix::fs::PermissionsExt, path::Path};
-use std::{io::Read, os::fd::AsFd};
+use std::{os::fd::AsFd, os::unix::fs::PermissionsExt};
 
-#[cfg(any(target_os = "linux", target_os = "android"))]
 use anyhow::{Context, Result};
 use flate2::read::GzDecoder;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use loopdev::LoopControl;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use rustix::mount::{MountFlags, UnmountFlags, mount, unmount};
+#[cfg(any(target_os = "linux", target_os = "android"))]
 use rustix::{
     fs::CWD,
     mount::{
@@ -39,6 +39,14 @@ where
 
     mount_ext4_loop(source.as_ref(), target.as_ref())?;
     Ok(())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+pub fn mount_ext4<P>(_source: P, _target: P) -> Result<()>
+where
+    P: AsRef<Path>,
+{
+    anyhow::bail!("ext4 mounting is only supported on linux/android")
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -74,6 +82,15 @@ where
     Ok(())
 }
 
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+pub fn mount_ext4_loop<P>(_source: P, _target: P) -> Result<()>
+where
+    P: AsRef<Path>,
+{
+    anyhow::bail!("loop mounting is only supported on linux/android")
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn is_overlay_supported() -> Result<bool> {
     let file = fs::File::open("/proc/config.gz")?;
 
@@ -98,6 +115,11 @@ pub fn is_overlay_supported() -> Result<bool> {
     Ok(false)
 }
 
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+pub fn is_overlay_supported() -> Result<bool> {
+    Ok(false)
+}
+
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn umount_dir(src: impl AsRef<Path>) -> Result<()> {
     unmount(src.as_ref(), UnmountFlags::empty())
@@ -105,6 +127,12 @@ pub fn umount_dir(src: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+pub fn umount_dir(_src: impl AsRef<Path>) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn fs<S, P>(
     upperdir: Option<String>,
     workdir: Option<String>,
@@ -140,4 +168,19 @@ where
     )?;
 
     Ok(())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+pub fn fs<S, P>(
+    _upperdir: Option<String>,
+    _workdir: Option<String>,
+    _lowerdir_config: String,
+    _source: S,
+    _dest: P,
+) -> Result<()>
+where
+    S: ToString,
+    P: AsRef<Path>,
+{
+    anyhow::bail!("overlay fsopen mount is only supported on linux/android")
 }

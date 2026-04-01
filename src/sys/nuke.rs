@@ -3,14 +3,21 @@
 
 use std::path::Path;
 
+#[cfg(any(target_os = "linux", target_os = "android"))]
 use ksu::NukeExt4Sysfs;
 
 pub fn nuke_path(path: &Path) {
-    let mut nuke = NukeExt4Sysfs::new();
-    nuke.add(path);
-    if let Err(e) = nuke.execute() {
-        log::warn!("Failed to nuke {}: {:#}", path.display(), e);
-    } else {
-        log::debug!("Nuke successful: {}", path.display());
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        let mut nuke = NukeExt4Sysfs::new();
+        nuke.add(path);
+        if let Err(e) = nuke.execute() {
+            log::warn!("Failed to nuke {}: {:#}", path.display(), e);
+        } else {
+            log::debug!("Nuke successful: {}", path.display());
+        }
     }
+
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    let _ = path;
 }

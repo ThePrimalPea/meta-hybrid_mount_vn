@@ -105,6 +105,15 @@ pub fn generate(
     modules: &[Module],
     storage_root: &Path,
 ) -> Result<MountPlan> {
+    generate_with_root(config, modules, storage_root, Path::new("/"))
+}
+
+fn generate_with_root(
+    config: &config::Config,
+    modules: &[Module],
+    storage_root: &Path,
+    system_root: &Path,
+) -> Result<MountPlan> {
     log::info!(
         "[planner] start generating mount plan: modules={}, storage_root={}",
         modules.len(),
@@ -113,7 +122,7 @@ pub fn generate(
 
     let mut plan = MountPlan::default();
 
-    let mut overlay_groups: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
+    let mut overlay_groups: BTreeMap<PathBuf, (String, Vec<PathBuf>)> = BTreeMap::new();
     let mut target_cache: HashMap<PathBuf, PathBuf> = HashMap::new();
     let module_rank: HashMap<&str, usize> = modules
         .iter()
@@ -183,7 +192,7 @@ pub fn generate(
                 let mut queue = VecDeque::new();
                 queue.push_back(ProcessingItem {
                     module_source: path.clone(),
-                    system_target: Path::new("/").join(dir_name),
+                    system_target: system_root.join(dir_name),
                     partition_label: dir_name.to_string(),
                 });
 
@@ -237,17 +246,17 @@ pub fn generate(
                             module_source.display(),
                             canonical_target.display()
                         );
-                        overlay_groups
+                        let (_, layers) = overlay_groups
                             .entry(canonical_target)
-                            .or_default()
-                            .push(module_source);
+                            .or_insert_with(|| (partition_label.clone(), Vec::new()));
+                        layers.push(module_source);
                     }
                 }
             }
         }
     }
 
-    for (target_path, mut layers) in overlay_groups {
+    for (target_path, (partition_name, mut layers)) in overlay_groups {
         let target_str = target_path.to_string_lossy().to_string();
 
         if !target_path.is_dir() {
@@ -262,12 +271,6 @@ pub fn generate(
 
             ar.cmp(&br).then_with(|| a.cmp(b))
         });
-
-        let partition_name = target_path
-            .iter()
-            .nth(1)
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "unknown".to_string());
 
         log::info!(
             "[planner] add overlay op: partition={}, target={}, layers={}",
@@ -296,4 +299,217 @@ pub fn generate(
     );
 
     Ok(plan)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, fs, path::Path};
+
+    use tempfile::tempdir;
+
+    use super::generate_with_root;
+    use crate::{
+        conf::config::{Config, ModuleRules, MountMode},
+        core::inventory::Module,
+    };
+
+    fn module_with_layout(base: &Path, id: &str, dirs: &[&str], rules: ModuleRules) -> Module {
+        let module_root = base.join(id);
+        fs::create_dir_all(&module_root).expect("failed to create module root");
+        fs::write(module_root.join("module.prop"), "name=Test Module\n")
+            .expect("failed to write module.prop");
+
+        for dir in dirs {
+            fs::create_dir_all(module_root.join(dir)).expect("failed to create module content");
+        }
+
+        Module {
+            id: id.to_string(),
+            source_path: module_root,
+            rules,
+        }
+    }
+
+    #[test]
+    fn planner_respects_partition_level_magic_and_ignore_rules() {
+        let temp = tempdir().expect("failed to create temp dir");
+        let system_root = temp.path().join("rootfs");
+        let storage_root = temp.path().join("storage");
+
+        fs::create_dir_all(system_root.join("system/bin")).expect("failed to create system/bin");
+
+        let overlay = module_with_layout(
+            &storage_root,
+            "mod_overlay",
+            &["system/bin"],
+            ModuleRules::default(),
+        );
+        let magic = module_with_layout(
+            &storage_root,
+            "mod_magic",
+            &["system/bin"],
+            ModuleRules {
+                default_mode: MountMode::Overlay,
+                paths: HashMap::from([("system".to_string(), MountMode::Magic)]),
+            },
+        );
+        let ignored = module_with_layout(
+            &storage_root,
+            "mod_ignore",
+            &["system/bin"],
+            ModuleRules {
+                default_mode: MountMode::Overlay,
+                paths: HashMap::from([("system".to_string(), MountMode::Ignore)]),
+            },
+        );
+
+        let plan = generate_with_root(
+            &Config::default(),
+            &[overlay, magic, ignored],
+            &storage_root,
+            &system_root,
+        )
+        .expect("planner should succeed");
+
+        assert_eq!(plan.overlay_module_ids, vec!["mod_overlay"]);
+        assert_eq!(plan.magic_module_ids, vec!["mod_magic"]);
+        assert_eq!(plan.overlay_ops.len(), 1);
+        assert_eq!(plan.overlay_ops[0].partition_name, "system");
+        assert_eq!(
+            plan.overlay_ops[0].target,
+            system_root.join("system/bin").to_string_lossy()
+        );
+        assert_eq!(
+            plan.overlay_ops[0].lowerdirs,
+            vec![storage_root.join("mod_overlay/system/bin")]
+        );
+    }
+
+    #[test]
+    fn planner_splits_sensitive_partitions_and_preserves_module_order_in_layers() {
+        let temp = tempdir().expect("failed to create temp dir");
+        let system_root = temp.path().join("rootfs");
+        let storage_root = temp.path().join("storage");
+
+        fs::create_dir_all(system_root.join("vendor/lib64"))
+            .expect("failed to create vendor/lib64");
+
+        let beta = module_with_layout(
+            &storage_root,
+            "beta_module",
+            &["vendor/lib64"],
+            ModuleRules::default(),
+        );
+        let alpha = module_with_layout(
+            &storage_root,
+            "alpha_module",
+            &["vendor/lib64"],
+            ModuleRules::default(),
+        );
+
+        let plan = generate_with_root(
+            &Config::default(),
+            &[beta, alpha],
+            &storage_root,
+            &system_root,
+        )
+        .expect("planner should succeed");
+
+        assert_eq!(
+            plan.overlay_module_ids,
+            vec!["alpha_module".to_string(), "beta_module".to_string()]
+        );
+        assert!(plan.magic_module_ids.is_empty());
+        assert_eq!(plan.overlay_ops.len(), 1);
+        assert_eq!(plan.overlay_ops[0].partition_name, "vendor");
+        assert_eq!(
+            plan.overlay_ops[0].target,
+            system_root.join("vendor/lib64").to_string_lossy()
+        );
+        assert_eq!(
+            plan.overlay_ops[0].lowerdirs,
+            vec![
+                storage_root.join("beta_module/vendor/lib64"),
+                storage_root.join("alpha_module/vendor/lib64"),
+            ]
+        );
+    }
+
+    #[test]
+    fn planner_prefers_runtime_storage_copy_over_module_source_tree() {
+        let temp = tempdir().expect("failed to create temp dir");
+        let system_root = temp.path().join("rootfs");
+        let storage_root = temp.path().join("storage");
+        let source_root = temp.path().join("source");
+
+        fs::create_dir_all(system_root.join("system/bin")).expect("failed to create system/bin");
+        fs::create_dir_all(system_root.join("system/xbin")).expect("failed to create system/xbin");
+
+        let source_module = module_with_layout(
+            &source_root,
+            "mod_storage",
+            &["system/xbin"],
+            ModuleRules::default(),
+        );
+        let _runtime_copy = module_with_layout(
+            &storage_root,
+            "mod_storage",
+            &["system/bin"],
+            ModuleRules::default(),
+        );
+
+        let plan = generate_with_root(
+            &Config::default(),
+            &[Module {
+                id: source_module.id.clone(),
+                source_path: source_module.source_path.clone(),
+                rules: source_module.rules.clone(),
+            }],
+            &storage_root,
+            &system_root,
+        )
+        .expect("planner should succeed");
+
+        assert_eq!(plan.overlay_ops.len(), 1);
+        assert_eq!(
+            plan.overlay_ops[0].target,
+            system_root.join("system/bin").to_string_lossy()
+        );
+        assert_eq!(
+            plan.overlay_ops[0].lowerdirs,
+            vec![storage_root.join("mod_storage/system/bin")]
+        );
+    }
+
+    #[test]
+    fn planner_includes_configured_extra_partitions() {
+        let temp = tempdir().expect("failed to create temp dir");
+        let system_root = temp.path().join("rootfs");
+        let storage_root = temp.path().join("storage");
+
+        fs::create_dir_all(system_root.join("my_custom/app"))
+            .expect("failed to create custom partition");
+
+        let module = module_with_layout(
+            &storage_root,
+            "mod_custom",
+            &["my_custom/app"],
+            ModuleRules::default(),
+        );
+
+        let config = Config {
+            partitions: vec!["my_custom".to_string()],
+            ..Config::default()
+        };
+
+        let plan = generate_with_root(&config, &[module], &storage_root, &system_root)
+            .expect("planner should succeed");
+
+        assert_eq!(plan.overlay_ops.len(), 1);
+        assert_eq!(plan.overlay_ops[0].partition_name, "my_custom");
+        assert_eq!(
+            plan.overlay_ops[0].target,
+            system_root.join("my_custom/app").to_string_lossy()
+        );
+    }
 }
