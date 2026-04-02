@@ -81,7 +81,7 @@ Default path: `/data/adb/hybrid-mount/config.toml`.
 | `mountsource` | string | auto-detect | Runtime source tag (e.g. `KSU`, `APatch`). |
 | `partitions` | list\|csv string | `[]` | Extra managed partitions. |
 | `overlay_mode` | `ext4` \| `tmpfs` | `ext4` | Overlay upper/work backing mode. |
-| `disable_umount` | bool | `false` | Skip unmount operations (debug-only). |
+| `disable_umount` | bool | `false` | Skip umount operations (debug-only). |
 | `allow_umount_coexistence` | bool | `false` | Allow coexistence with existing umount behavior. |
 | `enable_overlay_fallback` | bool | `false` | When overlayfs is unavailable, allow falling back to Magic Mount for planned overlay modules. |
 | `default_mode` | `overlay` \| `magic` | `overlay` | Default policy for module paths. |

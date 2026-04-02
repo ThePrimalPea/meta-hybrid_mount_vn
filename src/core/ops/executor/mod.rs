@@ -15,7 +15,6 @@ use crate::{
         ops::planner::MountPlan,
         recovery::{FailureStage, ModuleStageFailure},
     },
-    mount::{overlayfs::utils::umount_dir, umount_mgr},
 };
 
 pub struct ExecutionResult {
@@ -148,17 +147,6 @@ impl Executer {
                 mounted_ids.len()
             );
         }
-
-        let _ = umount_dir(tempdir.as_ref());
-
-        #[cfg(any(target_os = "linux", target_os = "android"))]
-        {
-            if !config.disable_umount {
-                let _ = umount_mgr::send_umountable(tempdir.as_ref());
-                let _ = umount_mgr::commit();
-            }
-        }
-
         let mut result_overlay: Vec<String> = final_overlay_ids.into_iter().collect();
         let mut result_magic: Vec<String> = final_magic_ids.into_iter().collect();
 

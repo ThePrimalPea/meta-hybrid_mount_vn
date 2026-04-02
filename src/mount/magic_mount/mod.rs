@@ -403,7 +403,7 @@ where
         .map_err(|e| wrap_with_module_context(e, &root));
 
         if let Err(e) = unmount(&tmp_dir, UnmountFlags::DETACH) {
-            log::error!("failed to unmount tmp {e}");
+            log::error!("failed to umount tmp {e}");
         }
         fs::remove_dir(tmp_dir).ok();
 
