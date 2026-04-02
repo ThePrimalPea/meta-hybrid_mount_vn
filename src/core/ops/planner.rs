@@ -225,6 +225,12 @@ fn generate_with_root(
                         || target_name == "system";
 
                     if should_split {
+                        let next_partition_label = if target_name.is_empty() {
+                            partition_label.clone()
+                        } else {
+                            target_name.to_string()
+                        };
+
                         if let Ok(sub_entries) = fs::read_dir(&module_source) {
                             for sub_entry in sub_entries.flatten() {
                                 let sub_path = sub_entry.path();
@@ -236,7 +242,7 @@ fn generate_with_root(
                                 queue.push_back(ProcessingItem {
                                     module_source: sub_path,
                                     system_target: canonical_target.join(sub_name),
-                                    partition_label: partition_label.clone(),
+                                    partition_label: next_partition_label.clone(),
                                 });
                             }
                         }
@@ -305,6 +311,8 @@ fn generate_with_root(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
     use std::{collections::HashMap, fs, path::Path};
 
     use tempfile::tempdir;
@@ -512,6 +520,41 @@ mod tests {
         assert_eq!(
             plan.overlay_ops[0].target,
             system_root.join("my_custom/app").to_string_lossy()
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn planner_tracks_symlinked_system_partitions_under_real_partition_names() {
+        let temp = tempdir().expect("failed to create temp dir");
+        let system_root = temp.path().join("rootfs");
+        let storage_root = temp.path().join("storage");
+
+        fs::create_dir_all(system_root.join("system")).expect("failed to create system root");
+        fs::create_dir_all(system_root.join("vendor/lib64"))
+            .expect("failed to create vendor/lib64");
+        symlink("../vendor", system_root.join("system/vendor"))
+            .expect("failed to create /system/vendor symlink");
+
+        let module = module_with_layout(
+            &storage_root,
+            "mod_vendor",
+            &["system/vendor/lib64"],
+            ModuleRules::default(),
+        );
+
+        let plan = generate_with_root(&Config::default(), &[module], &storage_root, &system_root)
+            .expect("planner should succeed");
+
+        assert_eq!(plan.overlay_ops.len(), 1);
+        assert_eq!(plan.overlay_ops[0].partition_name, "vendor");
+        assert_eq!(
+            plan.overlay_ops[0].target,
+            system_root.join("vendor/lib64").to_string_lossy()
+        );
+        assert_eq!(
+            plan.overlay_ops[0].lowerdirs,
+            vec![storage_root.join("mod_vendor/system/vendor/lib64")]
         );
     }
 }
