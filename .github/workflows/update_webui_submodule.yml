@@ -38,18 +38,31 @@ jobs:
             echo "source_sha=${{ github.event.client_payload.source_sha }}"
           fi
 
+      - name: Resolve tracked branch
+        id: tracked_branch
+        run: |
+          TRACKED_BRANCH=$(git config -f .gitmodules submodule.webui.branch || echo main)
+          echo "tracked_branch=${TRACKED_BRANCH}" >> "${GITHUB_OUTPUT}"
+          echo "Tracked branch: ${TRACKED_BRANCH}"
+          SHOULD_UPDATE=true
+          if [[ "${{ github.event_name }}" == "repository_dispatch" ]] && [[ -n "${{ github.event.client_payload.source_branch }}" ]] && [[ "${{ github.event.client_payload.source_branch }}" != "${TRACKED_BRANCH}" ]]; then
+            SHOULD_UPDATE=false
+            echo "Ignoring repository_dispatch from branch '${{ github.event.client_payload.source_branch }}'"
+            echo "This workflow only tracks '${TRACKED_BRANCH}'."
+          fi
+          echo "should_update=${SHOULD_UPDATE}" >> "${GITHUB_OUTPUT}"
+
       - name: Update webui submodule
+        if: ${{ steps.tracked_branch.outputs.should_update == 'true' }}
         run: |
           git submodule sync -- webui
-          if [[ "${{ github.event_name }}" == "repository_dispatch" ]] && [[ -n "${{ github.event.client_payload.source_branch }}" ]]; then
-            SOURCE_BRANCH="${{ github.event.client_payload.source_branch }}"
-            git -C webui fetch origin "${SOURCE_BRANCH}"
-            git -C webui checkout --detach "origin/${SOURCE_BRANCH}"
-          else
-            git submodule update --init --remote --checkout webui
-          fi
+          TRACKED_BRANCH="${{ steps.tracked_branch.outputs.tracked_branch }}"
+          git submodule set-branch --branch "${TRACKED_BRANCH}" webui
+          git -C webui fetch origin "${TRACKED_BRANCH}"
+          git -C webui checkout -B "${TRACKED_BRANCH}" "origin/${TRACKED_BRANCH}"
 
       - name: Commit and push if changed
+        if: ${{ steps.tracked_branch.outputs.should_update == 'true' }}
         env:
           TARGET_TOKEN: ${{ secrets.META_HYBRID_MOUNT_REPO_TOKEN }}
         run: |
