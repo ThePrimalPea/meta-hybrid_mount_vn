@@ -64,7 +64,12 @@ where
         .context("Failed to attach source to loop device")?;
 
     let device_path = ld.path().context("Could not get loop device path")?;
-    log::debug!("loop device path: {}", device_path.display());
+    crate::scoped_log!(
+        debug,
+        "overlayfs:utils",
+        "loop device: path={}",
+        device_path.display()
+    );
 
     mount(
         &device_path,

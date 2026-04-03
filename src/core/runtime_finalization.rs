@@ -25,7 +25,7 @@ pub fn finalize(
 
     let state = build_runtime_state(storage_mode, mount_point, plan, result);
     if let Err(err) = state.save() {
-        log::warn!("[stage:finalize] failed to save runtime state: {:#}", err);
+        crate::scoped_log!(warn, "finalize", "save runtime state failed: {:#}", err);
     }
 
     Ok(())

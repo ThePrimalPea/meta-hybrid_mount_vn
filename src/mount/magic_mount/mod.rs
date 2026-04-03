@@ -149,7 +149,7 @@ impl MagicMount {
             NodeFileType::RegularFile => self.regular_file(context),
             NodeFileType::Directory => self.directory(context),
             NodeFileType::Whiteout => {
-                log::debug!("file {} is removed", self.path.display());
+                crate::scoped_log!(debug, "magic", "whiteout: path={}", self.path.display());
                 Ok(())
             }
         }
@@ -159,8 +159,10 @@ impl MagicMount {
 impl MagicMount {
     fn symlink(&self, context: &mut MountContext) -> Result<()> {
         if let Some(module_path) = &self.node.module_path {
-            log::debug!(
-                "create module symlink {} -> {}",
+            crate::scoped_log!(
+                debug,
+                "magic",
+                "mount symlink: src={}, dst={}",
                 module_path.display(),
                 self.work_dir_path.display()
             );
@@ -190,8 +192,10 @@ impl MagicMount {
             bail!("cannot mount root file {}!", self.path.display());
         };
 
-        log::debug!(
-            "mount module file {} -> {}",
+        crate::scoped_log!(
+            debug,
+            "magic",
+            "mount file: src={}, dst={}",
             module_path.display(),
             self.work_dir_path.display()
         );
@@ -209,7 +213,13 @@ impl MagicMount {
         })?;
 
         if let Err(e) = mount_remount(target, MountFlags::RDONLY | MountFlags::BIND, "") {
-            log::warn!("make file {} ro: {e:#?}", target.display());
+            crate::scoped_log!(
+                warn,
+                "magic",
+                "remount readonly failed: path={}, error={:#?}",
+                target.display(),
+                e
+            );
         }
 
         context.stats.record_file();
@@ -236,9 +246,12 @@ impl MagicMount {
                 };
                 if need {
                     if self.node.module_path.is_none() {
-                        log::error!(
-                            "cannot create tmpfs on {}, ignore: {name}",
-                            self.path.display()
+                        crate::scoped_log!(
+                            error,
+                            "magic",
+                            "tmpfs create skipped: path={}, child={}, reason=root_without_module_path",
+                            self.path.display(),
+                            name
                         );
                         context.stats.record_ignored();
                         node.skip = true;
@@ -276,7 +289,7 @@ impl MagicMount {
                     self.path.display()
                 );
             }
-            log::debug!("dir {} is replaced", self.path.display());
+            crate::scoped_log!(debug, "magic", "replace dir: path={}", self.path.display());
         }
 
         for (name, node) in &self.node.children {
@@ -300,13 +313,22 @@ impl MagicMount {
                 if has_tmpfs {
                     return Err(wrap_with_module_context(e, node));
                 }
-                log::error!("mount child {}/{name} failed: {e:#?}", self.path.display());
+                crate::scoped_log!(
+                    error,
+                    "magic",
+                    "mount child failed: path={}/{}, error={:#?}",
+                    self.path.display(),
+                    name,
+                    e
+                );
             }
         }
 
         if tmpfs {
-            log::debug!(
-                "moving tmpfs {} -> {}",
+            crate::scoped_log!(
+                debug,
+                "magic",
+                "move tmpfs: src={}, dst={}",
                 self.work_dir_path.display(),
                 self.path.display()
             );
@@ -316,7 +338,13 @@ impl MagicMount {
                 MountFlags::RDONLY | MountFlags::BIND,
                 "",
             ) {
-                log::warn!("make dir {} ro: {e:#?}", self.path.display());
+                crate::scoped_log!(
+                    warn,
+                    "magic",
+                    "remount readonly failed: path={}, error={:#?}",
+                    self.path.display(),
+                    e
+                );
             }
             mount_move(&self.work_dir_path, &self.path).with_context(|| {
                 format!(
@@ -326,7 +354,13 @@ impl MagicMount {
                 )
             })?;
             if let Err(e) = mount_change(&self.path, MountPropagationFlags::PRIVATE) {
-                log::warn!("make dir {} private: {e:#?}", self.path.display());
+                crate::scoped_log!(
+                    warn,
+                    "magic",
+                    "make private failed: path={}, error={:#?}",
+                    self.path.display(),
+                    e
+                );
             }
 
             #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -375,7 +409,14 @@ impl MagicMount {
                     }
                     return Err(e);
                 }
-                log::error!("mount child {}/{name} failed: {e:#?}", self.path.display());
+                crate::scoped_log!(
+                    error,
+                    "magic",
+                    "mount child failed: path={}/{}, error={:#?}",
+                    self.path.display(),
+                    name,
+                    e
+                );
             }
         }
 
@@ -398,7 +439,7 @@ where
     let mut context = MountContext::default();
 
     if let Some(root) = collect_module_files(module_dir, extra_partitions, need_id)? {
-        log::debug!("collected: {root:?}");
+        crate::scoped_log!(debug, "magic", "collected tree: {:?}", root);
         let tmp_root = tmp_path.as_ref();
         let tmp_dir = tmp_root.join("workdir");
         ensure_dir_exists(&tmp_dir)?;
@@ -418,12 +459,20 @@ where
         .map_err(|e| wrap_with_module_context(e, &root));
 
         if let Err(e) = unmount(&tmp_dir, UnmountFlags::DETACH) {
-            log::error!("failed to umount tmp {e}");
+            crate::scoped_log!(
+                error,
+                "magic",
+                "unmount temp failed: path={}, error={}",
+                tmp_dir.display(),
+                e
+            );
         }
         fs::remove_dir(tmp_dir).ok();
 
-        log::info!(
-            "mounted files: {}, mounted symlinks: {}, ignored files: {}",
+        crate::scoped_log!(
+            info,
+            "magic",
+            "complete: mounted_files={}, mounted_symlinks={}, ignored_files={}",
             context.stats.mounted_files,
             context.stats.mounted_symlinks,
             context.stats.ignored_files
@@ -431,7 +480,7 @@ where
 
         ret
     } else {
-        log::info!("no modules to mount, skipping!");
+        crate::scoped_log!(info, "magic", "skip: reason=no_modules_to_mount");
         Ok(())
     }
 }

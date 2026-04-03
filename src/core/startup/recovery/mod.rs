@@ -20,8 +20,10 @@ pub fn run(config: Config) -> Result<()> {
         let attempt = state.current_attempt();
         let mnt_base = utils::get_mnt();
         sys::fs::ensure_dir_exists(&mnt_base)?;
-        log::info!(
-            "[stage:recovery] attempt {}/{} started with runtime mount {}",
+        crate::scoped_log!(
+            info,
+            "recovery",
+            "attempt start: attempt={}/{}, mount_base={}",
             attempt,
             state.max_restarts(),
             mnt_base.display()
@@ -58,8 +60,10 @@ pub fn run(config: Config) -> Result<()> {
                             RecoveryDecision::InspectModules => {}
                         }
                     } else {
-                        log::warn!(
-                            "[stage:recovery] detected {} failure for modules: {}",
+                        crate::scoped_log!(
+                            warn,
+                            "recovery",
+                            "module failure: stage={}, modules={}",
                             module_failure.stage,
                             module_failure.module_ids.join(", ")
                         );
@@ -68,14 +72,18 @@ pub fn run(config: Config) -> Result<()> {
                     let action = state.mark_failed_modules(&module_failure.module_ids)?;
 
                     if !action.already_marked.is_empty() {
-                        log::debug!(
-                            "[stage:recovery] already marked modules ignored: {}",
+                        crate::scoped_log!(
+                            debug,
+                            "recovery",
+                            "already marked: modules={}",
                             action.already_marked.join(", ")
                         );
                     }
                     if !action.unknown_modules.is_empty() {
-                        log::error!(
-                            "[event:recovery_unknown_modules] stage={} attempt={}/{} modules={}",
+                        crate::scoped_log!(
+                            error,
+                            "recovery",
+                            "unknown modules: stage={}, attempt={}/{}, modules={}",
                             module_failure.stage,
                             attempt,
                             state.max_restarts(),
@@ -84,8 +92,10 @@ pub fn run(config: Config) -> Result<()> {
                     }
 
                     if !action.newly_marked.is_empty() {
-                        log::warn!(
-                            "[event:recovery_mark_skip] stage={} attempt={}/{} modules={}",
+                        crate::scoped_log!(
+                            warn,
+                            "recovery",
+                            "mark skip: stage={}, attempt={}/{}, modules={}",
                             module_failure.stage,
                             attempt,
                             state.max_restarts(),
@@ -101,14 +111,16 @@ pub fn run(config: Config) -> Result<()> {
                         }
                     }
 
-                    log::error!(
-                        "[stage:recovery] no newly marked modules for {} failure; aborting to avoid retry loop",
+                    crate::scoped_log!(
+                        error,
+                        "recovery",
+                        "abort: stage={}, reason=no_newly_marked_modules",
                         module_failure.stage
                     );
                 }
 
                 let err_msg = format!("{:#}", e).replace('\n', " -> ");
-                log::error!("[stage:recovery] unrecoverable error: {}", err_msg);
+                crate::scoped_log!(error, "recovery", "unrecoverable: error={}", err_msg);
                 crate::core::module_status::update_crash_description(&err_msg);
                 return Err(e);
             }

@@ -65,7 +65,7 @@ pub fn commit() -> Result<()> {
         list.format_msg(|p| format!("{p:?} umount successful "));
         list.flags(TryUmountFlags::MNT_DETACH);
         if let Err(e2) = list.umount() {
-            log::warn!("try_umount failed: {:#}", e2);
+            crate::scoped_log!(warn, "umount", "commit failed: {:#}", e2);
         }
 
         Ok(())

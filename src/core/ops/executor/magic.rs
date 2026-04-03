@@ -14,8 +14,10 @@ pub(super) fn mount_magic(
 ) -> Result<Vec<String>> {
     let magic_ws_path = tempdir.join("magic_workspace");
 
-    log::debug!(
-        "[executor] mount_magic preparing workspace: {}",
+    crate::scoped_log!(
+        debug,
+        "executor:magic",
+        "prepare workspace: path={}",
         magic_ws_path.display()
     );
 
@@ -32,7 +34,12 @@ pub(super) fn mount_magic(
         !config.disable_umount,
     )?;
 
-    log::debug!("[executor] mount_magic done: module_count={}", ids.len());
+    crate::scoped_log!(
+        debug,
+        "executor:magic",
+        "complete: module_count={}",
+        ids.len()
+    );
 
     Ok(ids.iter().cloned().collect())
 }

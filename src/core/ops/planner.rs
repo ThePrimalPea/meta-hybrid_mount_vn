@@ -114,8 +114,10 @@ fn generate_with_root(
     storage_root: &Path,
     system_root: &Path,
 ) -> Result<MountPlan> {
-    log::info!(
-        "[planner] start generating mount plan: modules={}, storage_root={}",
+    crate::scoped_log!(
+        info,
+        "planner",
+        "start: modules={}, storage_root={}",
         modules.len(),
         storage_root.display()
     );
@@ -138,10 +140,12 @@ fn generate_with_root(
     let managed_partitions = build_managed_partitions(config);
 
     for module in modules {
-        log::debug!("[planner] evaluating module={}", module.id);
+        crate::scoped_log!(debug, "planner", "module inspect: id={}", module.id);
         let Some(content_path) = module_content_path(storage_root, module) else {
-            log::debug!(
-                "[planner] skip module={} because content path not found",
+            crate::scoped_log!(
+                debug,
+                "planner",
+                "module skip: id={}, reason=content_path_missing",
                 module.id,
             );
             continue;
@@ -153,8 +157,10 @@ fn generate_with_root(
                     let entry = match entry_result {
                         Ok(entry) => entry,
                         Err(err) => {
-                            log::warn!(
-                                "[planner] failed to enumerate module={} content under {}: {}",
+                            crate::scoped_log!(
+                                warn,
+                                "planner",
+                                "enumerate content failed: module={}, path={}, error={}",
                                 module.id,
                                 content_path.display(),
                                 err
@@ -172,8 +178,10 @@ fn generate_with_root(
                         Ok(file_type) if file_type.is_symlink() => continue,
                         Ok(_) => {}
                         Err(err) => {
-                            log::warn!(
-                                "[planner] failed to inspect file type for module={} path={}: {}",
+                            crate::scoped_log!(
+                                warn,
+                                "planner",
+                                "file type failed: module={}, path={}, error={}",
                                 module.id,
                                 path.display(),
                                 err
@@ -184,8 +192,10 @@ fn generate_with_root(
 
                     let dir_name = entry.file_name();
                     let Some(dir_name) = dir_name.to_str() else {
-                        log::warn!(
-                            "[planner] skip non-utf8 partition directory for module={} path={:?}",
+                        crate::scoped_log!(
+                            warn,
+                            "planner",
+                            "skip: module={}, reason=non_utf8_partition_dir, path={:?}",
                             module.id,
                             path
                         );
@@ -199,16 +209,20 @@ fn generate_with_root(
                     let mode = module.rules.get_mode(dir_name);
                     if matches!(mode, MountMode::Magic) {
                         magic_ids.insert(module.id.clone());
-                        log::info!(
-                            "[planner] module={} partition={} forced to magic mount",
+                        crate::scoped_log!(
+                            info,
+                            "planner",
+                            "mode override: module={}, partition={}, mode=magic",
                             module.id,
                             dir_name
                         );
                         continue;
                     }
                     if matches!(mode, MountMode::Ignore) {
-                        log::debug!(
-                            "[planner] module={} partition={} ignored by rule",
+                        crate::scoped_log!(
+                            debug,
+                            "planner",
+                            "mode override: module={}, partition={}, mode=ignore",
                             module.id,
                             dir_name
                         );
@@ -232,8 +246,10 @@ fn generate_with_root(
                         } = item;
 
                         if !system_target.exists() {
-                            log::debug!(
-                                "[planner] skip missing target for module={}: {}",
+                            crate::scoped_log!(
+                                debug,
+                                "planner",
+                                "target skip: module={}, reason=missing_target, path={}",
                                 module.id,
                                 system_target.display()
                             );
@@ -265,8 +281,10 @@ fn generate_with_root(
                                         let sub_entry = match sub_entry_result {
                                             Ok(sub_entry) => sub_entry,
                                             Err(err) => {
-                                                log::warn!(
-                                                    "[planner] failed to enumerate module={} subtree under {}: {}",
+                                                crate::scoped_log!(
+                                                    warn,
+                                                    "planner",
+                                                    "enumerate subtree failed: module={}, path={}, error={}",
                                                     module.id,
                                                     module_source.display(),
                                                     err
@@ -288,8 +306,10 @@ fn generate_with_root(
                                     }
                                 }
                                 Err(err) => {
-                                    log::warn!(
-                                        "[planner] failed to read module={} subtree {}: {}",
+                                    crate::scoped_log!(
+                                        warn,
+                                        "planner",
+                                        "read subtree failed: module={}, path={}, error={}",
                                         module.id,
                                         module_source.display(),
                                         err
@@ -297,8 +317,10 @@ fn generate_with_root(
                                 }
                             }
                         } else {
-                            log::debug!(
-                                "[planner] queue overlay layer: module={}, partition={}, layer={}, target={}",
+                            crate::scoped_log!(
+                                debug,
+                                "planner",
+                                "queue overlay: module={}, partition={}, layer={}, target={}",
                                 module.id,
                                 partition_label,
                                 module_source.display(),
@@ -313,8 +335,10 @@ fn generate_with_root(
                 }
             }
             Err(err) => {
-                log::warn!(
-                    "[planner] failed to read module={} content root {}: {}",
+                crate::scoped_log!(
+                    warn,
+                    "planner",
+                    "read content root failed: module={}, path={}, error={}",
                     module.id,
                     content_path.display(),
                     err
@@ -339,8 +363,10 @@ fn generate_with_root(
             ar.cmp(&br).then_with(|| a.cmp(b))
         });
 
-        log::info!(
-            "[planner] add overlay op: partition={}, target={}, layers={}",
+        crate::scoped_log!(
+            info,
+            "planner",
+            "overlay op: partition={}, target={}, layers={}",
             partition_name,
             target_str,
             layers.len()
@@ -358,8 +384,10 @@ fn generate_with_root(
     plan.overlay_module_ids.sort();
     plan.magic_module_ids.sort();
 
-    log::info!(
-        "[planner] plan generated: overlay_ops={}, overlay_modules={}, magic_modules={}",
+    crate::scoped_log!(
+        info,
+        "planner",
+        "complete: overlay_ops={}, overlay_modules={}, magic_modules={}",
         plan.overlay_ops.len(),
         plan.overlay_module_ids.len(),
         plan.magic_module_ids.len()

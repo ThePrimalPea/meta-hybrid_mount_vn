@@ -29,8 +29,10 @@ impl RecoveryState {
     pub(super) fn new(config: &Config) -> anyhow::Result<Self> {
         let module_dirs = super::skip_markers::list_module_dirs(&config.moduledir)?;
         let max_restarts = module_dirs.len().saturating_add(1);
-        log::info!(
-            "[stage:recovery] initialized: module_candidates={}, restart_limit={}",
+        crate::scoped_log!(
+            info,
+            "recovery",
+            "state init: module_candidates={}, restart_limit={}",
             module_dirs.len(),
             max_restarts
         );
@@ -62,8 +64,10 @@ impl RecoveryState {
         }
 
         if self.unattributed_retry_used {
-            log::error!(
-                "[event:recovery_retry_unattributed] exhausted=true stage={}",
+            crate::scoped_log!(
+                error,
+                "recovery",
+                "retry unattributed exhausted: stage={}",
                 stage
             );
             return RecoveryDecision::InspectModules;
@@ -74,8 +78,10 @@ impl RecoveryState {
         if self.restart_round > self.max_restarts {
             return RecoveryDecision::AbortRetryLimit;
         }
-        log::warn!(
-            "[event:recovery_retry_unattributed] stage={} next_attempt={}/{}",
+        crate::scoped_log!(
+            warn,
+            "recovery",
+            "retry unattributed: stage={}, next_attempt={}/{}",
             stage,
             self.restart_round + 1,
             self.max_restarts
@@ -88,8 +94,10 @@ impl RecoveryState {
         if self.restart_round > self.max_restarts {
             return RecoveryDecision::AbortRetryLimit;
         }
-        log::info!(
-            "[event:recovery_restart] stage={} next_attempt={}/{}",
+        crate::scoped_log!(
+            info,
+            "recovery",
+            "restart scheduled: stage={}, next_attempt={}/{}",
             stage,
             self.restart_round + 1,
             self.max_restarts
@@ -99,14 +107,16 @@ impl RecoveryState {
 
     pub(super) fn log_completion(&self) {
         if self.auto_skipped.is_empty() {
-            log::info!("[stage:recovery] completed without auto-skip");
+            crate::scoped_log!(info, "recovery", "complete: auto_skipped=0");
             return;
         }
 
         let mut skipped: Vec<String> = self.auto_skipped.iter().cloned().collect();
         skipped.sort();
-        log::warn!(
-            "[stage:recovery] completed after auto-skipping modules: {}",
+        crate::scoped_log!(
+            warn,
+            "recovery",
+            "complete: auto_skipped_modules={}",
             skipped.join(", ")
         );
     }
@@ -116,7 +126,7 @@ impl RecoveryState {
             "Auto-recovery reached restart limit ({} rounds), aborting to avoid loop",
             self.max_restarts
         );
-        log::error!("[stage:recovery] {}", loop_error);
+        crate::scoped_log!(error, "recovery", "abort: error={}", loop_error);
         crate::core::module_status::update_crash_description(&loop_error.to_string());
         Err(loop_error)
     }

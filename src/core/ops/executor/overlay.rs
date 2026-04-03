@@ -13,8 +13,10 @@ use crate::{conf::config, core::ops::planner::OverlayOperation, defs, mount::ove
 pub(super) fn mount_overlay(op: &OverlayOperation, config: &config::Config) -> Result<Vec<String>> {
     let involved_modules = fallback::collect_involved_modules(op);
 
-    log::debug!(
-        "[executor] mount_overlay preparing: target={}, partition={}, modules={}",
+    crate::scoped_log!(
+        debug,
+        "executor:overlay",
+        "prepare: target={}, partition={}, modules={}",
         op.target,
         op.partition_name,
         if involved_modules.is_empty() {
@@ -58,8 +60,10 @@ pub(super) fn mount_overlay(op: &OverlayOperation, config: &config::Config) -> R
         &mount_source,
     )?;
 
-    log::debug!(
-        "[executor] mount_overlay done: target={}, mount_source={}",
+    crate::scoped_log!(
+        debug,
+        "executor:overlay",
+        "complete: target={}, mount_source={}",
         op.target,
         mount_source
     );

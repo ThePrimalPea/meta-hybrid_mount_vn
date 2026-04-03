@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub fn perform_sync(modules: &[Module], target_base: &Path) -> Result<()> {
-    log::info!("Starting full module sync to {}", target_base.display());
+    crate::scoped_log!(info, "sync", "start: target={}", target_base.display());
 
     prune_orphaned_modules(modules, target_base)?;
 
@@ -27,7 +27,7 @@ pub fn perform_sync(modules: &[Module], target_base: &Path) -> Result<()> {
         let has_content = has_module_mount_content(module);
 
         if has_content {
-            log::info!("Syncing module: {}", module.id);
+            crate::scoped_log!(info, "sync", "module start: id={}", module.id);
 
             let tmp_dst = target_base.join(format!(".tmp_{}", module.id));
 
@@ -36,7 +36,13 @@ pub fn perform_sync(modules: &[Module], target_base: &Path) -> Result<()> {
             }
 
             if let Err(e) = sync_dir(&module.source_path, &tmp_dst, true) {
-                log::error!("Failed to sync module {}: {}", module.id, e);
+                crate::scoped_log!(
+                    error,
+                    "sync",
+                    "module sync failed: id={}, error={}",
+                    module.id,
+                    e
+                );
                 let _ = fs::remove_dir_all(&tmp_dst);
                 return Err(ModuleStageFailure::new(
                     FailureStage::Sync,
@@ -47,12 +53,20 @@ pub fn perform_sync(modules: &[Module], target_base: &Path) -> Result<()> {
             }
 
             if let Err(e) = prune_empty_dirs(&tmp_dst) {
-                log::warn!("Failed to prune empty dirs for {}: {}", module.id, e);
+                crate::scoped_log!(
+                    warn,
+                    "sync",
+                    "prune empty dirs failed: id={}, error={}",
+                    module.id,
+                    e
+                );
             }
 
             if let Err(e) = apply_overlay_opaque_flags(&tmp_dst) {
-                log::warn!(
-                    "Failed to apply overlay opaque xattrs for {}: {}",
+                crate::scoped_log!(
+                    warn,
+                    "sync",
+                    "apply overlay opaque failed: id={}, error={}",
                     module.id,
                     e
                 );
@@ -61,7 +75,13 @@ pub fn perform_sync(modules: &[Module], target_base: &Path) -> Result<()> {
             let mut backup_created = false;
             if dst.exists() {
                 if let Err(e) = fs::rename(&dst, &dst_backup) {
-                    log::error!("Failed to backup existing module {}: {}", module.id, e);
+                    crate::scoped_log!(
+                        error,
+                        "sync",
+                        "backup existing failed: id={}, error={}",
+                        module.id,
+                        e
+                    );
                     let _ = fs::remove_dir_all(&tmp_dst);
                     return Err(ModuleStageFailure::new(
                         FailureStage::Sync,
@@ -74,7 +94,13 @@ pub fn perform_sync(modules: &[Module], target_base: &Path) -> Result<()> {
             }
 
             if let Err(e) = fs::rename(&tmp_dst, &dst) {
-                log::error!("Failed to commit atomic sync for {}: {}", module.id, e);
+                crate::scoped_log!(
+                    error,
+                    "sync",
+                    "atomic rename failed: id={}, error={}",
+                    module.id,
+                    e
+                );
                 if backup_created {
                     let _ = fs::rename(&dst_backup, &dst);
                 }
@@ -88,10 +114,21 @@ pub fn perform_sync(modules: &[Module], target_base: &Path) -> Result<()> {
             }
 
             if backup_created && let Err(e) = fs::remove_dir_all(&dst_backup) {
-                log::warn!("Failed to clean up backup for {}: {}", module.id, e);
+                crate::scoped_log!(
+                    warn,
+                    "sync",
+                    "cleanup backup failed: id={}, error={}",
+                    module.id,
+                    e
+                );
             }
         } else {
-            log::debug!("Skipping module: {}", module.id);
+            crate::scoped_log!(
+                debug,
+                "sync",
+                "module skip: id={}, reason=no_mount_content",
+                module.id
+            );
         }
     }
 
@@ -105,7 +142,12 @@ fn apply_overlay_opaque_flags(root: &Path) -> Result<()> {
             && let Some(parent) = entry.path().parent()
         {
             set_overlay_opaque(parent)?;
-            log::debug!("Set overlay opaque xattr on: {}", parent.display());
+            crate::scoped_log!(
+                debug,
+                "sync",
+                "set overlay opaque: path={}",
+                parent.display()
+            );
         }
     }
     Ok(())
@@ -130,14 +172,26 @@ fn prune_orphaned_modules(modules: &[Module], target_base: &Path) -> Result<()> 
             && !name.starts_with('.')
             && !active_ids.contains(name.as_ref())
         {
-            log::info!("Pruning orphaned module storage: {}", name);
+            crate::scoped_log!(info, "sync", "prune orphan: name={}", name);
 
             if path.is_dir() {
                 if let Err(e) = fs::remove_dir_all(&path) {
-                    log::warn!("Failed to remove orphan dir {}: {}", name, e);
+                    crate::scoped_log!(
+                        warn,
+                        "sync",
+                        "remove orphan dir failed: name={}, error={}",
+                        name,
+                        e
+                    );
                 }
             } else if let Err(e) = fs::remove_file(&path) {
-                log::warn!("Failed to remove orphan file {}: {}", name, e);
+                crate::scoped_log!(
+                    warn,
+                    "sync",
+                    "remove orphan file failed: name={}, error={}",
+                    name,
+                    e
+                );
             }
         }
     }

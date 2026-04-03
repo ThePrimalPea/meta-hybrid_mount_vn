@@ -41,8 +41,10 @@ where
     P: AsRef<Path>,
 {
     let (path, work_dir_path) = (path.as_ref(), work_dir_path.as_ref());
-    log::debug!(
-        "creating tmpfs skeleton for {} at {}",
+    crate::scoped_log!(
+        debug,
+        "magic:collect",
+        "tmpfs skeleton: src={}, dst={}",
         path.display(),
         work_dir_path.display()
     );
@@ -71,16 +73,20 @@ where
     let file_type = entry.file_type()?;
 
     if file_type.is_file() {
-        log::debug!(
-            "mount mirror file {} -> {}",
+        crate::scoped_log!(
+            debug,
+            "magic:collect",
+            "mirror file: src={}, dst={}",
             path.display(),
             work_dir_path.display()
         );
         fs::File::create(&work_dir_path)?;
         mount_bind(&path, &work_dir_path)?;
     } else if file_type.is_dir() {
-        log::debug!(
-            "mount mirror dir {} -> {}",
+        crate::scoped_log!(
+            debug,
+            "magic:collect",
+            "mirror dir: src={}, dst={}",
             path.display(),
             work_dir_path.display()
         );
@@ -97,15 +103,23 @@ where
             let entry = match entry_result {
                 Ok(entry) => entry,
                 Err(err) => {
-                    log::warn!("failed to enumerate mirror dir {}: {}", path.display(), err);
+                    crate::scoped_log!(
+                        warn,
+                        "magic:collect",
+                        "enumerate mirror failed: path={}, error={}",
+                        path.display(),
+                        err
+                    );
                     continue;
                 }
             };
             mount_mirror(&path, &work_dir_path, &entry)?;
         }
     } else if file_type.is_symlink() {
-        log::debug!(
-            "create mirror symlink {} -> {}",
+        crate::scoped_log!(
+            debug,
+            "magic:collect",
+            "mirror symlink: src={}, dst={}",
             path.display(),
             work_dir_path.display()
         );
@@ -128,14 +142,21 @@ pub fn collect_module_files(
     partitions.insert("system".to_string());
     partitions.extend(extra_partitions.iter().cloned());
 
-    log::debug!("begin collect module files: {}", module_root.display());
+    crate::scoped_log!(
+        debug,
+        "magic:collect",
+        "start: root={}",
+        module_root.display()
+    );
 
     for entry_result in module_root.read_dir()? {
         let entry = match entry_result {
             Ok(entry) => entry,
             Err(err) => {
-                log::warn!(
-                    "failed to enumerate module root {}: {}",
+                crate::scoped_log!(
+                    warn,
+                    "magic:collect",
+                    "enumerate root failed: path={}, error={}",
                     module_root.display(),
                     err
                 );
@@ -148,30 +169,55 @@ pub fn collect_module_files(
 
         let file_name = entry.file_name();
         let Some(id) = file_name.to_str().map(str::to_owned) else {
-            log::warn!("skipped non-utf8 module directory name: {:?}", file_name);
+            crate::scoped_log!(
+                warn,
+                "magic:collect",
+                "skip: reason=non_utf8_module_dir, name={:?}",
+                file_name
+            );
             continue;
         };
-        log::debug!("processing new module: {id}");
+        crate::scoped_log!(debug, "magic:collect", "module inspect: id={}", id);
 
         if !need_id.contains(&id) {
-            log::debug!("module {id} was blocked.");
+            crate::scoped_log!(
+                debug,
+                "magic:collect",
+                "module skip: id={}, reason=not_selected",
+                id
+            );
             continue;
         }
 
         let module_path = entry.path();
         let prop = module_path.join("module.prop");
         if !prop.is_file() {
-            log::debug!("skipped module {id}, because not found module.prop");
+            crate::scoped_log!(
+                debug,
+                "magic:collect",
+                "module skip: id={}, reason=missing_module_prop",
+                id
+            );
             continue;
         }
         if !is_valid_module_prop_id(&prop)? {
-            log::debug!("skipped module {id}, invalid ID format");
+            crate::scoped_log!(
+                debug,
+                "magic:collect",
+                "module skip: id={}, reason=invalid_module_id",
+                id
+            );
             continue;
         }
 
         if inventory::is_reserved_module_dir(&id) || inventory::has_mount_block_marker(&module_path)
         {
-            log::debug!("skipped module {id}, due to disable/remove/skip_mount");
+            crate::scoped_log!(
+                debug,
+                "magic:collect",
+                "module skip: id={}, reason=blocked_or_reserved",
+                id
+            );
             continue;
         }
 
@@ -183,12 +229,23 @@ pub fn collect_module_files(
 
         if touched_partitions.is_empty() {
             for p in &partitions {
-                log::debug!("{id} due not modify {p}");
+                crate::scoped_log!(
+                    debug,
+                    "magic:collect",
+                    "partition untouched: module={}, partition={}",
+                    id,
+                    p
+                );
             }
             continue;
         }
 
-        log::debug!("collecting {}", module_path.display());
+        crate::scoped_log!(
+            debug,
+            "magic:collect",
+            "module collect: path={}",
+            module_path.display()
+        );
 
         for p in touched_partitions {
             has_file.insert(system.collect_module_files(module_path.join(p))?);
@@ -229,7 +286,12 @@ pub fn collect_module_files(
             if path_of_root.is_dir() && (!require_symlink || path_of_system.is_symlink()) {
                 let name = partition.clone();
                 if let Some(node) = system.children.remove(&name) {
-                    log::debug!("attach extra partition '{name}' to root");
+                    crate::scoped_log!(
+                        debug,
+                        "magic:collect",
+                        "attach extra partition: name={}",
+                        name
+                    );
                     root.children.insert(name, node);
                 }
             }
@@ -248,7 +310,13 @@ fn is_valid_module_prop_id(prop: &Path) -> Result<bool> {
         let line = match line_result {
             Ok(line) => line,
             Err(e) => {
-                log::warn!("failed to read module.prop {}: {}", prop.display(), e);
+                crate::scoped_log!(
+                    warn,
+                    "magic:collect",
+                    "read module.prop failed: path={}, error={}",
+                    prop.display(),
+                    e
+                );
                 return Ok(false);
             }
         };
@@ -268,10 +336,12 @@ where
     let src_symlink = read_link(src.as_ref())?;
     symlink(&src_symlink, dst.as_ref())?;
     lsetfilecon(dst.as_ref(), lgetfilecon(src.as_ref())?.as_str())?;
-    log::debug!(
-        "clone symlink {} -> {}({})",
+    crate::scoped_log!(
+        debug,
+        "magic:collect",
+        "clone symlink: dst={}, src={}, target={}",
         dst.as_ref().display(),
-        dst.as_ref().display(),
+        src.as_ref().display(),
         src_symlink.display()
     );
     Ok(())

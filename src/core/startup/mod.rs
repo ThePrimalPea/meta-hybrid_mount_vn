@@ -31,16 +31,16 @@ pub fn run(cli: &Cli) -> Result<()> {
     let config = load_final_config(cli)?;
 
     utils::init_logging().context("Failed to initialize logging")?;
-    log::info!(">> Initializing Hybrid Mount Daemon...");
+    crate::scoped_log!(info, "startup", "init: daemon=hybrid-mount");
 
     if let Ok(version) = std::fs::read_to_string("/proc/sys/kernel/osrelease") {
-        log::debug!("Kernel Version: {}", version.trim());
+        crate::scoped_log!(debug, "startup", "kernel: version={}", version.trim());
     }
 
     utils::check_ksu();
 
     if config.disable_umount {
-        log::warn!("!! Umount is DISABLED via config.");
+        crate::scoped_log!(warn, "startup", "config: disable_umount=true");
     }
 
     recovery::run(config)

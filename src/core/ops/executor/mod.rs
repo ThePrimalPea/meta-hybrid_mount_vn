@@ -35,8 +35,10 @@ impl Executor {
     where
         P: AsRef<Path>,
     {
-        log::info!(
-            "[executor] start: overlay_ops={}, preselected_magic_modules={}",
+        crate::scoped_log!(
+            info,
+            "executor",
+            "start: overlay_ops={}, preselected_magic_modules={}",
             plan.overlay_ops.len(),
             plan.magic_module_ids.len()
         );
@@ -44,18 +46,22 @@ impl Executor {
         let mut final_overlay_ids: HashSet<String> = HashSet::new();
 
         if Self::is_supported()? {
-            log::info!("[executor] overlayfs supported, applying overlay operations");
+            crate::scoped_log!(info, "executor", "overlayfs: supported=true");
             for op in &plan.overlay_ops {
-                log::info!(
-                    "[executor] apply overlay op: partition={}, target={}, layers={}",
+                crate::scoped_log!(
+                    info,
+                    "executor",
+                    "overlay apply: partition={}, target={}, layers={}",
                     op.partition_name,
                     op.target,
                     op.lowerdirs.len()
                 );
                 match overlay::mount_overlay(op, config) {
                     Ok(ids) => {
-                        log::info!(
-                            "[executor] overlay op success: target={}, modules={}",
+                        crate::scoped_log!(
+                            info,
+                            "executor",
+                            "overlay success: target={}, modules={}",
                             op.target,
                             ids.len()
                         );
@@ -66,18 +72,24 @@ impl Executor {
                         let is_symlink_loop = fallback::is_symlink_loop_mount_error(&err);
                         if is_symlink_loop {
                             if !fallback::overlay_fallback_allowed(config) {
-                                log::error!(
-                                    "[executor] overlay op hit symlink-loop mount error on {}, but enable_overlay_fallback=false; cannot downgrade to magic mount",
+                                crate::scoped_log!(
+                                    error,
+                                    "executor",
+                                    "overlay fallback denied: target={}, reason=symlink_loop, enable_overlay_fallback=false",
                                     op.target
                                 );
                             } else if involved_modules.is_empty() {
-                                log::error!(
-                                    "[executor] overlay op hit symlink-loop mount error on {}, but no module ids were inferred; cannot downgrade to magic mount",
+                                crate::scoped_log!(
+                                    error,
+                                    "executor",
+                                    "overlay fallback denied: target={}, reason=symlink_loop_no_modules",
                                     op.target
                                 );
                             } else {
-                                log::warn!(
-                                    "[executor] overlay op hit symlink-loop mount error on {}; fallback to magic mount for modules: {}",
+                                crate::scoped_log!(
+                                    warn,
+                                    "executor",
+                                    "overlay fallback: target={}, reason=symlink_loop, modules={}",
                                     op.target,
                                     involved_modules.join(", ")
                                 );
@@ -85,8 +97,10 @@ impl Executor {
                                 continue;
                             }
                         } else {
-                            log::error!(
-                                "[executor] overlay op failed on {} with non-symlink-loop error; forwarding failure to recovery",
+                            crate::scoped_log!(
+                                error,
+                                "executor",
+                                "overlay failed: target={}, reason=non_symlink_loop",
                                 op.target
                             );
                         }
@@ -108,8 +122,10 @@ impl Executor {
                             "[executor] overlayfs unsupported and no modules could be inferred for magic fallback"
                         );
                     }
-                    log::warn!(
-                        "[executor] overlayfs unsupported, fallback enabled; switching {} modules to magic mount",
+                    crate::scoped_log!(
+                        warn,
+                        "executor",
+                        "overlayfs fallback: supported=false, switched_modules={}",
                         fallback_ids.len()
                     );
                     final_magic_ids.extend(fallback_ids);
@@ -117,7 +133,11 @@ impl Executor {
                     bail!("[executor] overlayfs unsupported and overlay operations are pending");
                 }
             }
-            log::info!("[executor] overlayfs unsupported, no overlay operations to apply");
+            crate::scoped_log!(
+                info,
+                "executor",
+                "overlayfs: supported=false, pending_overlay_ops=0"
+            );
         }
 
         let mut magic_need_list: Vec<String> = final_magic_ids.iter().cloned().collect();
@@ -125,8 +145,10 @@ impl Executor {
 
         if !magic_need_list.is_empty() {
             let magic_need_ids: HashSet<String> = magic_need_list.iter().cloned().collect();
-            log::info!(
-                "[executor] applying magic mount for modules: {}",
+            crate::scoped_log!(
+                info,
+                "executor",
+                "magic apply: modules={}",
                 magic_need_list.join(", ")
             );
             let mounted_ids = magic::mount_magic(&magic_need_ids, config, tempdir.as_ref())
@@ -144,8 +166,10 @@ impl Executor {
                     )
                 })?;
             final_magic_ids.retain(|id| mounted_ids.contains(id));
-            log::info!(
-                "[executor] magic mount completed: mounted_modules={}",
+            crate::scoped_log!(
+                info,
+                "executor",
+                "magic complete: mounted_modules={}",
                 mounted_ids.len()
             );
         }
@@ -161,8 +185,10 @@ impl Executor {
         result_overlay.sort();
         result_magic.sort();
 
-        log::info!(
-            "[executor] completed: overlay_modules={}, magic_modules={}",
+        crate::scoped_log!(
+            info,
+            "executor",
+            "complete: overlay_modules={}, magic_modules={}",
             result_overlay.len(),
             result_magic.len()
         );

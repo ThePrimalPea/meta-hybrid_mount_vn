@@ -62,9 +62,11 @@ fn mount_overlay_core(
 ) -> Result<()> {
     let lowerdir_config = lower_dirs.join(":");
 
-    log::debug!(
-        "core mount overlayfs on {:?}, layers={}, source={}",
-        dest,
+    crate::scoped_log!(
+        debug,
+        "overlayfs",
+        "core mount: dest={}, layers={}, source={}",
+        dest.display(),
         lower_dirs.len(),
         mount_source
     );
@@ -83,7 +85,7 @@ fn mount_overlay_core(
         mount_source,
         dest,
     ) {
-        log::warn!("fsopen mount failed: {:#}, fallback to mount", e);
+        crate::scoped_log!(warn, "overlayfs", "fsopen failed, fallback=mount: {:#}", e);
         let safe_lower = lowerdir_config.replace(',', "\\,");
         let mut data = format!("lowerdir={safe_lower}");
 
@@ -149,8 +151,10 @@ pub fn mount_overlayfs(
 }
 
 pub fn bind_mount(from: impl AsRef<Path>, to: impl AsRef<Path>) -> Result<()> {
-    log::info!(
-        "bind mount {} -> {}",
+    crate::scoped_log!(
+        info,
+        "overlayfs",
+        "bind mount: src={}, dst={}",
         from.as_ref().display(),
         to.as_ref().display()
     );
@@ -231,8 +235,10 @@ fn mount_overlay_child(
         mount_point,
         mount_source,
     ) {
-        log::warn!(
-            "failed to mount overlayfs for child {}: {:#}",
+        crate::scoped_log!(
+            warn,
+            "overlayfs",
+            "child overlay failed: mount_point={}, error={:#}",
             mount_point,
             e
         );
@@ -249,7 +255,7 @@ pub fn mount_overlay(
     upperdir: Option<PathBuf>,
     mount_source: &str,
 ) -> Result<()> {
-    log::info!("mount overlay for {}", root);
+    crate::scoped_log!(info, "overlayfs", "mount root: target={}", root);
     std::env::set_current_dir(root).with_context(|| format!("failed to chdir to {root}"))?;
     let stock_root = ".";
 
@@ -271,8 +277,10 @@ pub fn mount_overlay(
             &stock_root,
             mount_source,
         ) {
-            log::warn!(
-                "failed to mount overlay for child {}: {:#}, revert",
+            crate::scoped_log!(
+                warn,
+                "overlayfs",
+                "child mount failed, revert root: mount_point={}, error={:#}",
                 mount_point,
                 e
             );

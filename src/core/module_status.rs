@@ -80,6 +80,12 @@ fn set_description(prop_path: &Path, desc_text: &str) {
 
     let content = lines.join("\n");
     if let Err(err) = atomic_write(prop_path, format!("{}\n", content)) {
-        log::warn!("Failed to update module description: {}", err);
+        crate::scoped_log!(
+            warn,
+            "module_status",
+            "description update failed: path={}, error={}",
+            prop_path.display(),
+            err
+        );
     }
 }

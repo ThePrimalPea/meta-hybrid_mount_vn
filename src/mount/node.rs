@@ -93,8 +93,10 @@ impl Node {
             let entry = match entry_result {
                 Ok(entry) => entry,
                 Err(err) => {
-                    log::warn!(
-                        "failed to enumerate module tree under {}: {}",
+                    crate::scoped_log!(
+                        warn,
+                        "node",
+                        "enumerate failed: path={}, error={}",
                         dir.display(),
                         err
                     );
@@ -161,7 +163,7 @@ impl Node {
                 };
                 let replace = file_type == NodeFileType::Directory && Self::dir_is_replace(&path);
                 if replace {
-                    log::debug!("{} need replace", path.display());
+                    crate::scoped_log!(debug, "node", "replace marker: path={}", path.display());
                 }
                 return Some(Self {
                     name: name.to_string(),
@@ -173,7 +175,13 @@ impl Node {
                 });
             }
             Err(err) => {
-                log::warn!("failed to inspect module entry {}: {}", path.display(), err);
+                crate::scoped_log!(
+                    warn,
+                    "node",
+                    "metadata failed: path={}, error={}",
+                    path.display(),
+                    err
+                );
             }
         }
 

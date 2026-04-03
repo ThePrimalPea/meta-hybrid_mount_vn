@@ -9,6 +9,13 @@ use anyhow::Result;
 
 pub use self::validation::*;
 
+#[macro_export]
+macro_rules! scoped_log {
+    ($level:ident, $scope:literal, $fmt:literal $(, $args:expr)* $(,)?) => {
+        log::$level!(concat!("[", $scope, "] ", $fmt) $(, $args)*)
+    };
+}
+
 pub fn get_mnt() -> PathBuf {
     let mut name = String::new();
 

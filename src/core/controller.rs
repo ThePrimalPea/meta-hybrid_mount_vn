@@ -59,8 +59,10 @@ impl MountController<Init> {
     }
 
     pub fn init_storage(self, mnt_base: &Path) -> Result<MountController<StorageReady>> {
-        log::info!(
-            "[stage:init_storage] preparing mount storage at {}",
+        crate::scoped_log!(
+            info,
+            "controller:init_storage",
+            "start: mount_base={}",
             mnt_base.display()
         );
         let handle = storage::setup(
@@ -74,8 +76,10 @@ impl MountController<Init> {
             self.config.disable_umount,
         )?;
 
-        log::info!(
-            "[stage:init_storage] storage ready: mode={}, mount_point={}",
+        crate::scoped_log!(
+            info,
+            "controller:init_storage",
+            "complete: mode={}, mount_point={}",
             handle.mode(),
             handle.mount_point().display()
         );
@@ -90,23 +94,27 @@ impl MountController<Init> {
 
 impl MountController<StorageReady> {
     pub fn scan_and_sync(mut self) -> Result<MountController<ModulesReady>> {
-        log::info!(
-            "[stage:scan_and_sync] scanning modules from {}",
+        crate::scoped_log!(
+            info,
+            "controller:scan_and_sync",
+            "scan start: moduledir={}",
             self.config.moduledir.display()
         );
         let modules = inventory::scan(&self.config.moduledir, &self.config)?;
 
-        log::info!(
-            "[stage:scan_and_sync] scan complete: {} module(s)",
+        crate::scoped_log!(
+            info,
+            "controller:scan_and_sync",
+            "scan complete: modules={}",
             modules.len()
         );
 
-        log::info!("[stage:scan_and_sync] syncing module content into runtime storage");
+        crate::scoped_log!(info, "controller:scan_and_sync", "sync start");
         sync::perform_sync(&modules, self.state.handle.mount_point())?;
 
         self.state.handle.commit(self.config.disable_umount)?;
 
-        log::info!("[stage:scan_and_sync] storage commit completed");
+        crate::scoped_log!(info, "controller:scan_and_sync", "commit complete");
 
         Ok(MountController {
             config: self.config,
@@ -121,15 +129,17 @@ impl MountController<StorageReady> {
 
 impl MountController<ModulesReady> {
     pub fn generate_plan(self) -> Result<MountController<Planned>> {
-        log::info!("[stage:generate_plan] generating mount plan");
+        crate::scoped_log!(info, "controller:generate_plan", "start");
         let plan = planner::generate(
             &self.config,
             &self.state.modules,
             self.state.handle.mount_point(),
         )?;
 
-        log::info!(
-            "[stage:generate_plan] plan ready: overlay_ops={}, overlay_modules={}, magic_modules={}",
+        crate::scoped_log!(
+            info,
+            "controller:generate_plan",
+            "complete: overlay_ops={}, overlay_modules={}, magic_modules={}",
             plan.overlay_ops.len(),
             plan.overlay_module_ids.len(),
             plan.magic_module_ids.len()
@@ -148,12 +158,14 @@ impl MountController<ModulesReady> {
 
 impl MountController<Planned> {
     pub fn execute(self) -> Result<MountController<Executed>> {
-        log::info!("[stage:execute] applying mount plan");
+        crate::scoped_log!(info, "controller:execute", "start");
         let result =
             executor::Executor::execute(&self.state.plan, &self.config, self.tempdir.clone())?;
 
-        log::info!(
-            "[stage:execute] execution complete: overlay_mounted={}, magic_mounted={}",
+        crate::scoped_log!(
+            info,
+            "controller:execute",
+            "complete: overlay_mounted={}, magic_mounted={}",
             result.overlay_module_ids.len(),
             result.magic_module_ids.len()
         );
@@ -172,7 +184,7 @@ impl MountController<Planned> {
 
 impl MountController<Executed> {
     pub fn finalize(self) -> Result<()> {
-        log::info!("[stage:finalize] writing runtime state and module descriptions");
+        crate::scoped_log!(info, "controller:finalize", "start");
         runtime_finalization::finalize(
             self.state.handle.mode(),
             self.state.handle.mount_point(),
@@ -180,7 +192,7 @@ impl MountController<Executed> {
             &self.state.result,
         )?;
 
-        log::info!("[stage:finalize] boot sequence finalized");
+        crate::scoped_log!(info, "controller:finalize", "complete");
 
         Ok(())
     }

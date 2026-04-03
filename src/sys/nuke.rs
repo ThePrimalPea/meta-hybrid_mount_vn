@@ -12,9 +12,15 @@ pub fn nuke_path(path: &Path) {
         let mut nuke = NukeExt4Sysfs::new();
         nuke.add(path);
         if let Err(e) = nuke.execute() {
-            log::warn!("Failed to nuke {}: {:#}", path.display(), e);
+            crate::scoped_log!(
+                warn,
+                "nuke",
+                "execute failed: path={}, error={:#}",
+                path.display(),
+                e
+            );
         } else {
-            log::debug!("Nuke successful: {}", path.display());
+            crate::scoped_log!(debug, "nuke", "execute success: path={}", path.display());
         }
     }
 

@@ -36,7 +36,12 @@ pub fn load_config(cli: &Cli, policy: LoadPolicy) -> Result<Config> {
             match policy {
                 LoadPolicy::FallbackToDefault => {
                     if !is_not_found {
-                        log::warn!("Failed to load default config, using defaults: {:#}", e);
+                        crate::scoped_log!(
+                            warn,
+                            "config",
+                            "load_default failed, fallback=defaults: {:#}",
+                            e
+                        );
                     }
                     Ok(Config::default())
                 }

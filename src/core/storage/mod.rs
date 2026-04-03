@@ -54,7 +54,7 @@ pub fn setup(
     detach_existing_mount(mnt_base);
 
     if !force_ext4 && try_setup_tmpfs(mnt_base, mount_source)? {
-        log::trace!("tmpfs mode is supported");
+        crate::scoped_log!(trace, "storage", "backend select: mode=tmpfs");
         finalize_mount_setup(mnt_base, disable_umount);
         return Ok(StorageHandle::new(TmpfsBackend::new(mnt_base)));
     }
@@ -95,15 +95,19 @@ fn try_setup_tmpfs(target: &Path, mount_source: &str) -> Result<bool> {
         Ok(()) => match crate::sys::fs::is_overlay_xattr_supported() {
             Ok(true) => return Ok(true),
             Ok(false) => {
-                log::warn!(
-                    "tmpfs mounted at {} but overlay xattr is unsupported, fallback to ext4 backend",
+                crate::scoped_log!(
+                    warn,
+                    "storage",
+                    "tmpfs fallback: path={}, reason=overlay_xattr_unsupported",
                     target.display()
                 );
                 let _ = umount(target, UnmountFlags::DETACH);
             }
             Err(err) => {
-                log::warn!(
-                    "tmpfs mounted at {} but failed to probe overlay xattr support: {:#}, fallback to ext4 backend",
+                crate::scoped_log!(
+                    warn,
+                    "storage",
+                    "tmpfs fallback: path={}, reason=overlay_xattr_probe_failed, error={:#}",
                     target.display(),
                     err
                 );
@@ -111,8 +115,10 @@ fn try_setup_tmpfs(target: &Path, mount_source: &str) -> Result<bool> {
             }
         },
         Err(err) => {
-            log::warn!(
-                "failed to mount tmpfs at {} (source={}): {:#}, fallback to ext4 backend",
+            crate::scoped_log!(
+                warn,
+                "storage",
+                "tmpfs mount failed: path={}, source={}, fallback=ext4, error={:#}",
                 target.display(),
                 mount_source,
                 err

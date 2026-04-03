@@ -27,7 +27,7 @@ pub(super) fn setup_ext4_image(
     img_path: &Path,
     moduledir: &Path,
 ) -> Result<Ext4Backend> {
-    log::trace!("using ext4 mode");
+    crate::scoped_log!(trace, "storage:ext4", "backend select: mode=ext4");
     let total_size = calculate_total_size(moduledir)?;
     let min_size = 64 * 1024 * 1024;
     let grow_size = std::cmp::max((total_size as f64 * 1.2) as u64, min_size);
@@ -54,15 +54,20 @@ fn calculate_total_size(path: &Path) -> Result<u64> {
         let metadata = match fs::symlink_metadata(&current) {
             Ok(metadata) => metadata,
             Err(err) if err.raw_os_error() == Some(libc::ELOOP) => {
-                log::warn!(
-                    "Skip path with symlink loop while calculating size: {} ({err})",
-                    current.display()
+                crate::scoped_log!(
+                    warn,
+                    "storage:ext4",
+                    "size skip: path={}, reason=symlink_loop, error={}",
+                    current.display(),
+                    err
                 );
                 continue;
             }
             Err(err) if err.kind() == ErrorKind::NotFound => {
-                log::debug!(
-                    "Skip disappeared path while calculating size: {}",
+                crate::scoped_log!(
+                    debug,
+                    "storage:ext4",
+                    "size skip: path={}, reason=not_found",
                     current.display()
                 );
                 continue;
@@ -87,10 +92,22 @@ fn calculate_total_size(path: &Path) -> Result<u64> {
                         stack.push(entry.path());
                     }
                 }
-                Err(_) => log::error!("Failed to read dir {}", current.display()),
+                Err(_) => {
+                    crate::scoped_log!(
+                        error,
+                        "storage:ext4",
+                        "read dir failed: path={}",
+                        current.display()
+                    )
+                }
             }
         } else if file_type.is_symlink() {
-            log::debug!("Skip symlink while calculating size: {}", current.display());
+            crate::scoped_log!(
+                debug,
+                "storage:ext4",
+                "size skip: path={}, reason=symlink",
+                current.display()
+            );
         }
     }
     Ok(total_size)

@@ -70,8 +70,10 @@ pub(super) fn list_module_dirs(base: &Path) -> Result<HashMap<String, PathBuf>> 
 
 fn create_skip_mount_marker(module_dir: &Path) -> Result<()> {
     let marker = module_dir.join(defs::SKIP_MOUNT_FILE_NAME);
-    log::info!(
-        "[stage:recovery] creating skip marker at {}",
+    crate::scoped_log!(
+        info,
+        "recovery:markers",
+        "create skip marker: path={}",
         marker.display()
     );
     OpenOptions::new()
@@ -80,8 +82,10 @@ fn create_skip_mount_marker(module_dir: &Path) -> Result<()> {
         .write(true)
         .open(&marker)
         .with_context(|| format!("Failed to create {}", marker.display()))?;
-    log::debug!(
-        "[stage:recovery] skip marker ready for module dir {}",
+    crate::scoped_log!(
+        debug,
+        "recovery:markers",
+        "skip marker ready: module_dir={}",
         module_dir.display()
     );
     Ok(())

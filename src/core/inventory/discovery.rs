@@ -44,10 +44,22 @@ fn load_module_rules(module_dir: &Path, module_id: &str, cfg: &config::Config) -
                     }
                 }
                 Err(e) => {
-                    log::warn!("Failed to parse rules for module '{}': {}", module_id, e)
+                    crate::scoped_log!(
+                        warn,
+                        "scanner",
+                        "rules parse failed: module={}, error={}",
+                        module_id,
+                        e
+                    )
                 }
             },
-            Err(e) => log::warn!("Failed to read rule file for '{}': {}", module_id, e),
+            Err(e) => crate::scoped_log!(
+                warn,
+                "scanner",
+                "rules read failed: module={}, error={}",
+                module_id,
+                e
+            ),
         }
     }
 
@@ -88,15 +100,17 @@ pub fn scan(source_dir: &Path, cfg: &config::Config) -> Result<Vec<Module>> {
 
         if inventory::is_reserved_module_dir(&id) {
             skipped_reserved += 1;
-            log::debug!("[scanner] skip reserved module dir: {}", id);
+            crate::scoped_log!(debug, "scanner", "skip: module={}, reason=reserved_dir", id);
             continue;
         }
 
         let block_markers = inventory::mount_block_markers(&path);
         if !block_markers.is_empty() {
             skipped_blocked += 1;
-            log::debug!(
-                "[scanner] skip blocked module dir: id={}, markers={}",
+            crate::scoped_log!(
+                debug,
+                "scanner",
+                "skip: module={}, reason=block_marker, markers={}",
                 id,
                 block_markers.join(",")
             );
@@ -112,8 +126,10 @@ pub fn scan(source_dir: &Path, cfg: &config::Config) -> Result<Vec<Module>> {
         });
     }
 
-    log::info!(
-        "[scanner] complete: total_dirs={}, active_modules={}, skipped_reserved={}, skipped_blocked={}",
+    crate::scoped_log!(
+        info,
+        "scanner",
+        "complete: total_dirs={}, active_modules={}, skipped_reserved={}, skipped_blocked={}",
         modules.len() + skipped_reserved + skipped_blocked,
         modules.len(),
         skipped_reserved,
