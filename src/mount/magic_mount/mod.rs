@@ -7,7 +7,6 @@ use std::{
     error::Error as StdError,
     fmt, fs,
     path::{Path, PathBuf},
-    sync::atomic::AtomicU32,
 };
 
 use anyhow::{Context, Result, bail};
@@ -25,10 +24,6 @@ use crate::{
     },
     sys::fs::ensure_dir_exists,
 };
-
-static MOUNTED_FILES: AtomicU32 = AtomicU32::new(0);
-static IGNORED_FILES: AtomicU32 = AtomicU32::new(0);
-static MOUNTED_SYMBOLS_FILES: AtomicU32 = AtomicU32::new(0);
 
 #[derive(Debug)]
 pub struct MagicMountModuleFailure {
@@ -92,6 +87,32 @@ fn wrap_with_module_context(err: anyhow::Error, node: &Node) -> anyhow::Error {
     }
 }
 
+#[derive(Debug, Default)]
+struct MountStats {
+    mounted_files: u32,
+    ignored_files: u32,
+    mounted_symlinks: u32,
+}
+
+impl MountStats {
+    fn record_file(&mut self) {
+        self.mounted_files += 1;
+    }
+
+    fn record_ignored(&mut self) {
+        self.ignored_files += 1;
+    }
+
+    fn record_symlink(&mut self) {
+        self.mounted_symlinks += 1;
+    }
+}
+
+#[derive(Debug, Default)]
+struct MountContext {
+    stats: MountStats,
+}
+
 struct MagicMount {
     node: Node,
     path: PathBuf,
@@ -122,11 +143,11 @@ impl MagicMount {
         }
     }
 
-    fn do_mount(&mut self) -> Result<()> {
+    fn do_mount(&mut self, context: &mut MountContext) -> Result<()> {
         match self.node.file_type {
-            NodeFileType::Symlink => self.symlink(),
-            NodeFileType::RegularFile => self.regular_file(),
-            NodeFileType::Directory => self.directory(),
+            NodeFileType::Symlink => self.symlink(context),
+            NodeFileType::RegularFile => self.regular_file(context),
+            NodeFileType::Directory => self.directory(context),
             NodeFileType::Whiteout => {
                 log::debug!("file {} is removed", self.path.display());
                 Ok(())
@@ -136,7 +157,7 @@ impl MagicMount {
 }
 
 impl MagicMount {
-    fn symlink(&self) -> Result<()> {
+    fn symlink(&self, context: &mut MountContext) -> Result<()> {
         if let Some(module_path) = &self.node.module_path {
             log::debug!(
                 "create module symlink {} -> {}",
@@ -150,15 +171,14 @@ impl MagicMount {
                     self.work_dir_path.display(),
                 )
             })?;
-            let mounted = MOUNTED_SYMBOLS_FILES.load(std::sync::atomic::Ordering::Relaxed) + 1;
-            MOUNTED_SYMBOLS_FILES.store(mounted, std::sync::atomic::Ordering::Relaxed);
+            context.stats.record_symlink();
             Ok(())
         } else {
             bail!("cannot mount root symlink {}!", self.path.display());
         }
     }
 
-    fn regular_file(&self) -> Result<()> {
+    fn regular_file(&self, context: &mut MountContext) -> Result<()> {
         let target = if self.has_tmpfs {
             fs::File::create(&self.work_dir_path)?;
             &self.work_dir_path
@@ -192,12 +212,11 @@ impl MagicMount {
             log::warn!("make file {} ro: {e:#?}", target.display());
         }
 
-        let mounted = MOUNTED_FILES.load(std::sync::atomic::Ordering::Relaxed) + 1;
-        MOUNTED_FILES.store(mounted, std::sync::atomic::Ordering::Relaxed);
+        context.stats.record_file();
         Ok(())
     }
 
-    fn directory(&mut self) -> Result<()> {
+    fn directory(&mut self, context: &mut MountContext) -> Result<()> {
         let mut tmpfs = !self.has_tmpfs && self.node.replace && self.node.module_path.is_some();
 
         if !self.has_tmpfs && !tmpfs {
@@ -221,9 +240,7 @@ impl MagicMount {
                             "cannot create tmpfs on {}, ignore: {name}",
                             self.path.display()
                         );
-                        let ignored_files =
-                            IGNORED_FILES.load(std::sync::atomic::Ordering::Relaxed) + 1;
-                        IGNORED_FILES.store(ignored_files, std::sync::atomic::Ordering::Relaxed);
+                        context.stats.record_ignored();
                         node.skip = true;
                         continue;
                     }
@@ -249,7 +266,7 @@ impl MagicMount {
         }
 
         if self.path.exists() && !self.node.replace {
-            self.mount_path(has_tmpfs)?;
+            self.mount_path(has_tmpfs, context)?;
         }
 
         if self.node.replace {
@@ -276,7 +293,7 @@ impl MagicMount {
                     #[cfg(any(target_os = "linux", target_os = "android"))]
                     self.umount,
                 )
-                .do_mount()
+                .do_mount(context)
             }
             .with_context(|| format!("magic mount {}/{name}", self.path.display()))
             {
@@ -322,7 +339,7 @@ impl MagicMount {
 }
 
 impl MagicMount {
-    fn mount_path(&mut self, has_tmpfs: bool) -> Result<()> {
+    fn mount_path(&mut self, has_tmpfs: bool, context: &mut MountContext) -> Result<()> {
         for entry in self.path.read_dir()?.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
             let mut failed_node: Option<Node> = None;
@@ -341,7 +358,7 @@ impl MagicMount {
                         #[cfg(any(target_os = "linux", target_os = "android"))]
                         self.umount,
                     )
-                    .do_mount()
+                    .do_mount(context)
                     .with_context(|| format!("magic mount {}/{name}", self.path.display()))
                 } else if has_tmpfs {
                     mount_mirror(&self.path, &self.work_dir_path, &entry)
@@ -378,9 +395,7 @@ pub fn magic_mount<P>(
 where
     P: AsRef<Path>,
 {
-    MOUNTED_FILES.store(0, std::sync::atomic::Ordering::Relaxed);
-    IGNORED_FILES.store(0, std::sync::atomic::Ordering::Relaxed);
-    MOUNTED_SYMBOLS_FILES.store(0, std::sync::atomic::Ordering::Relaxed);
+    let mut context = MountContext::default();
 
     if let Some(root) = collect_module_files(module_dir, extra_partitions, need_id)? {
         log::debug!("collected: {root:?}");
@@ -399,7 +414,7 @@ where
             #[cfg(any(target_os = "linux", target_os = "android"))]
             umount,
         )
-        .do_mount()
+        .do_mount(&mut context)
         .map_err(|e| wrap_with_module_context(e, &root));
 
         if let Err(e) = unmount(&tmp_dir, UnmountFlags::DETACH) {
@@ -407,11 +422,11 @@ where
         }
         fs::remove_dir(tmp_dir).ok();
 
-        let mounted_symbols = MOUNTED_SYMBOLS_FILES.load(std::sync::atomic::Ordering::Relaxed);
-        let mounted_files = MOUNTED_FILES.load(std::sync::atomic::Ordering::Relaxed);
-        let ignored_files = IGNORED_FILES.load(std::sync::atomic::Ordering::Relaxed);
         log::info!(
-            "mounted files: {mounted_files}, mounted symlinks: {mounted_symbols}, ignored files: {ignored_files}"
+            "mounted files: {}, mounted symlinks: {}, ignored files: {}",
+            context.stats.mounted_files,
+            context.stats.mounted_symlinks,
+            context.stats.ignored_files
         );
 
         ret
