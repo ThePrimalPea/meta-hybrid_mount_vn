@@ -1,4 +1,24 @@
 
+## v3.4.2
+
+
+### <!-- 9 --> Other
+
+- Fix installer notice confirmation blocking
+
+- Improve mount planning diagnostics
+
+- Refactor magic mount stats into context
+
+- Make node traversal deterministic
+
+- Polish executor naming and diagnostics text
+
+- Unify logging format across runtime
+
+
+
+
 ## v3.4.1
 
 
