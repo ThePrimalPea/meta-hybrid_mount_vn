@@ -4,12 +4,11 @@
 #include <linux/errno.h>
 #include <linux/fs.h>
 #include <linux/kernel.h>
-#include <linux/namei.h>
-#include <linux/path.h>
 #include <linux/printk.h>
 #include <linux/string.h>
 
 #include <kallsyms.h>
+#include <ksyms.h>
 #include <kpmodule.h>
 
 KPM_NAME("nuke_ext4_sysfs");
@@ -18,12 +17,52 @@ KPM_LICENSE("GPL v2");
 KPM_AUTHOR("Hybrid Mount Developers");
 KPM_DESCRIPTION("Expose nuke_ext4_sysfs for Hybrid Mount in APatch env");
 
+struct vfsmount;
+struct dentry;
+
+struct path {
+    struct vfsmount *mnt;
+    struct dentry *dentry;
+};
+
+/*
+ * KernelPatch ships a compact filesystem header set, so we define the minimal
+ * layout we need here instead of depending on absent kernel headers such as
+ * linux/namei.h or linux/path.h.
+ */
+struct file_system_type {
+    const char *name;
+};
+
+struct super_block {
+    struct file_system_type *s_type;
+    char s_id[32];
+};
+
+struct inode {
+    umode_t i_mode;
+    unsigned short i_opflags;
+    kuid_t i_uid;
+    kgid_t i_gid;
+    unsigned int i_flags;
+    const void *i_op;
+    struct super_block *i_sb;
+};
+
+struct dentry {
+    struct inode *d_inode;
+};
+
 typedef void (*ext4_unregister_sysfs_t)(struct super_block *sb);
+typedef int (*kern_path_t)(const char *name, unsigned int flags, struct path *path);
+typedef void (*path_put_t)(const struct path *path);
 
 static ext4_unregister_sysfs_t ext4_unregister_sysfs_ptr;
+static kern_path_t kern_path_ptr;
+static path_put_t path_put_ptr;
 
 static long resolve_ext4_unregister_sysfs(void) {
-    if (ext4_unregister_sysfs_ptr) {
+    if (ext4_unregister_sysfs_ptr && kern_path_ptr && path_put_ptr) {
         return 0;
     }
 
@@ -36,6 +75,16 @@ static long resolve_ext4_unregister_sysfs(void) {
         (ext4_unregister_sysfs_t)kallsyms_lookup_name("ext4_unregister_sysfs");
     if (!ext4_unregister_sysfs_ptr) {
         pr_err("[hm-kpm] ext4_unregister_sysfs symbol not found\n");
+        return -ENOENT;
+    }
+    kern_path_ptr = (kern_path_t)kallsyms_lookup_name("kern_path");
+    if (!kern_path_ptr) {
+        pr_err("[hm-kpm] kern_path symbol not found\n");
+        return -ENOENT;
+    }
+    path_put_ptr = (path_put_t)kallsyms_lookup_name("path_put");
+    if (!path_put_ptr) {
+        pr_err("[hm-kpm] path_put symbol not found\n");
         return -ENOENT;
     }
 
@@ -60,7 +109,7 @@ static long do_nuke_ext4_sysfs(const char *path) {
         return rc;
     }
 
-    err = kern_path(path, 0, &resolved_path);
+    err = kern_path_ptr(path, 0, &resolved_path);
     if (err) {
         pr_err("[hm-kpm] kern_path failed: path=%s err=%d\n", path, err);
         return err;
@@ -69,14 +118,14 @@ static long do_nuke_ext4_sysfs(const char *path) {
     sb = resolved_path.dentry->d_inode->i_sb;
     if (!sb || !sb->s_type || !sb->s_type->name) {
         pr_err("[hm-kpm] invalid super block for path=%s\n", path);
-        path_put(&resolved_path);
+        path_put_ptr(&resolved_path);
         return -EINVAL;
     }
 
     if (strcmp(sb->s_type->name, "ext4") != 0) {
         pr_err("[hm-kpm] target is not ext4: path=%s fs=%s\n", path,
                sb->s_type->name);
-        path_put(&resolved_path);
+        path_put_ptr(&resolved_path);
         return -EOPNOTSUPP;
     }
 
@@ -84,13 +133,13 @@ static long do_nuke_ext4_sysfs(const char *path) {
     pr_info("[hm-kpm] unregistering ext4 sysfs node: sb=%s proc=%s\n", sb->s_id,
             procfs_path);
     ext4_unregister_sysfs_ptr(sb);
-    path_put(&resolved_path);
+    path_put_ptr(&resolved_path);
 
-    err = kern_path(procfs_path, 0, &resolved_path);
+    err = kern_path_ptr(procfs_path, 0, &resolved_path);
     if (!err) {
         pr_err("[hm-kpm] procfs node still present after unregister: %s\n",
                procfs_path);
-        path_put(&resolved_path);
+        path_put_ptr(&resolved_path);
         return -EEXIST;
     }
     if (err != -ENOENT) {
