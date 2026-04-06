@@ -1,7 +1,10 @@
 // Copyright 2026 Hybrid Mount Developers
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::{path::Path, process::Command};
+use std::{
+    path::Path,
+    process::{Command, Output},
+};
 
 use anyhow::{Context, Result, bail};
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -63,7 +66,10 @@ fn execute_apatch_nuke(path: &Path) -> Result<()> {
     }
 
     let kpm_module = std::env::var("HYBRID_MOUNT_APATCH_KPM_MODULE")
-        .unwrap_or_else(|_| "/data/adb/hybrid-mount/kpm/nuke_ext4_sysfs.kpm".to_string());
+        .unwrap_or_else(|_| format!("{}/kpm/nuke_ext4_sysfs.kpm", crate::defs::HYBRID_MOUNT_DIR));
+    if !Path::new(&kpm_module).exists() {
+        bail!("apatch kpm module not found: {kpm_module}");
+    }
     let kpm_id =
         std::env::var("HYBRID_MOUNT_APATCH_KPM_ID").unwrap_or_else(|_| "nuke_ext4_sysfs".into());
     let call_mode =
@@ -71,19 +77,20 @@ fn execute_apatch_nuke(path: &Path) -> Result<()> {
     let procfs_node = probe_ext4_procfs_node(path).ok().flatten();
     let before_exists = procfs_node.as_ref().is_some_and(|node| node.exists());
 
-    let load_status = Command::new(&kp_bin)
+    let load_output = Command::new(&kp_bin)
         .args(["kpm", "load", &kpm_module])
-        .status()
+        .output()
         .with_context(|| format!("failed to load kpm module with {kp_bin}"))?;
-    if !load_status.success() {
+    if !load_output.status.success() {
         bail!(
-            "kpm load failed: module={kpm_module}, code={:?}",
-            load_status.code()
+            "kpm load failed: module={kpm_module}, code={:?}, output={}",
+            load_output.status.code(),
+            format_output(&load_output)
         );
     }
 
     let path_str = path.to_string_lossy().to_string();
-    let call_res = if call_mode.eq_ignore_ascii_case("nr") {
+    let call_output = if call_mode.eq_ignore_ascii_case("nr") {
         let nr = std::env::var("HYBRID_MOUNT_APATCH_KPM_UNUSED_NR")
             .context("HYBRID_MOUNT_APATCH_KPM_UNUSED_NR is required when call mode is 'nr'")?;
         let _ = nr
@@ -91,7 +98,7 @@ fn execute_apatch_nuke(path: &Path) -> Result<()> {
             .with_context(|| format!("invalid unused nr value: {nr}"))?;
         Command::new(&kp_bin)
             .args(["kpm", "call", &nr, &path_str])
-            .status()
+            .output()
             .with_context(|| format!("failed to call kpm unused nr with {kp_bin}"))
     } else {
         let control_name = std::env::var("HYBRID_MOUNT_APATCH_KPM_CONTROL")
@@ -104,41 +111,46 @@ fn execute_apatch_nuke(path: &Path) -> Result<()> {
         }
         Command::new(&kp_bin)
             .args(["kpm", "control", &control_name, &path_str])
-            .status()
+            .output()
             .with_context(|| format!("failed to call kpm control with {kp_bin}"))
-    };
+    }?;
 
-    let unload_status = Command::new(&kp_bin)
+    let unload_output = Command::new(&kp_bin)
         .args(["kpm", "unload", &kpm_id])
-        .status()
+        .output()
         .with_context(|| format!("failed to unload kpm module with {kp_bin}"))?;
-    if !unload_status.success() {
+    if !unload_output.status.success() {
         crate::scoped_log!(
             warn,
             "nuke",
-            "kpm unload failed: module={}, code={:?}",
+            "kpm unload failed: module={}, code={:?}, output={}",
             kpm_id,
-            unload_status.code()
+            unload_output.status.code(),
+            format_output(&unload_output)
         );
     }
 
-    let call_status = call_res?;
-    if !call_status.success() {
+    let call_rc = extract_kpm_rc(&call_output);
+    if !call_output.status.success() {
         bail!(
-            "kpm invoke failed: mode={call_mode}, code={:?}",
-            call_status.code()
+            "kpm invoke failed: mode={call_mode}, code={:?}, output={}",
+            call_output.status.code(),
+            format_output(&call_output)
+        );
+    }
+    if let Some(rc) = call_rc
+        && rc < 0
+    {
+        bail!(
+            "kpm invoke reported failure: mode={call_mode}, rc={rc}, output={}",
+            format_output(&call_output)
         );
     }
 
     if let Some(node) = procfs_node {
         let after_exists = node.exists();
-        if before_exists && after_exists {
-            crate::scoped_log!(
-                warn,
-                "nuke",
-                "procfs node still present after nuke: {}",
-                node.display()
-            );
+        if after_exists {
+            bail!("procfs node still present after nuke: {}", node.display());
         } else {
             crate::scoped_log!(
                 debug,
@@ -152,6 +164,38 @@ fn execute_apatch_nuke(path: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn extract_kpm_rc(output: &Output) -> Option<i64> {
+    [
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    ]
+    .into_iter()
+    .find_map(|text| {
+        text.split_whitespace().find_map(|token| {
+            token.strip_prefix("rc=").and_then(|value| {
+                value
+                    .trim_end_matches(|c: char| !matches!(c, '-' | '0'..='9'))
+                    .parse::<i64>()
+                    .ok()
+            })
+        })
+    })
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn format_output(output: &Output) -> String {
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+    match (stdout.is_empty(), stderr.is_empty()) {
+        (true, true) => "<empty>".to_string(),
+        (false, true) => format!("stdout={stdout}"),
+        (true, false) => format!("stderr={stderr}"),
+        (false, false) => format!("stdout={stdout}; stderr={stderr}"),
+    }
 }
 
 pub fn nuke_path(path: &Path) -> Result<()> {

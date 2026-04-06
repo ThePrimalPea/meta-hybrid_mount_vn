@@ -1,9 +1,16 @@
 // Copyright 2026 Hybrid Mount Developers
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::{env, fs, io::Write, path::Path, process::Command};
+use std::{
+    env,
+    ffi::OsStr,
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use fs_extra::{dir, file};
 use serde::Deserialize;
@@ -11,6 +18,10 @@ use zip::{CompressionMethod, write::FileOptions};
 
 mod zip_ext;
 use crate::zip_ext::zip_create_from_directory_with_options;
+
+const KPM_PROJECT_DIR: &str = "kpm";
+const KPM_MODULE_NAME: &str = "nuke_ext4_sysfs";
+const KPM_STAGE_NAME: &str = "nuke_ext4_sysfs.kpm";
 
 #[derive(Deserialize)]
 struct HybridMountMetadata {
@@ -195,6 +206,7 @@ fn build_full(
     let module_src = Path::new("module");
     let options = dir::CopyOptions::new().overwrite(true).content_only(true);
     dir::copy(module_src, &stage_dir, &options)?;
+    stage_kpm_assets(&stage_dir, cargo_release)?;
 
     generate_module_prop(&stage_dir, version_info)?;
 
@@ -210,6 +222,141 @@ fn build_full(
     zip_create_from_directory_with_options(&zip_file, &stage_dir, |_| zip_options)?;
 
     Ok(())
+}
+
+fn stage_kpm_assets(stage_dir: &Path, require_kpm: bool) -> Result<()> {
+    let kpm_project_dir = Path::new(KPM_PROJECT_DIR);
+    if !kpm_project_dir.exists() {
+        if require_kpm {
+            bail!(
+                "KPM project directory not found: {}",
+                kpm_project_dir.display()
+            );
+        }
+        return Ok(());
+    }
+
+    let artifact = ensure_kpm_artifact(kpm_project_dir, require_kpm)?;
+    let Some(artifact) = artifact else {
+        return Ok(());
+    };
+
+    let kpm_stage_dir = stage_dir.join("kpm");
+    fs::create_dir_all(&kpm_stage_dir)?;
+    file::copy(
+        &artifact,
+        kpm_stage_dir.join(KPM_STAGE_NAME),
+        &file::CopyOptions::new().overwrite(true),
+    )?;
+    Ok(())
+}
+
+fn ensure_kpm_artifact(project_dir: &Path, require_kpm: bool) -> Result<Option<PathBuf>> {
+    if should_attempt_kpm_build() {
+        build_kpm(project_dir)?;
+        let built = find_kpm_artifact(project_dir)?;
+        if built.is_none() {
+            bail!(
+                "KPM build completed but no artifact named {}*.kpm was found in {}",
+                KPM_MODULE_NAME,
+                project_dir.join("out").display()
+            );
+        }
+        return Ok(built);
+    }
+
+    let existing = find_kpm_artifact(project_dir)?;
+    if existing.is_some() {
+        return Ok(existing);
+    }
+
+    if require_kpm {
+        bail!(
+            "APatch KPM artifact is required for release builds. Set HYBRID_MOUNT_KP_DIR/KP_DIR \
+and Android NDK env vars, or prebuild {} under {}.",
+            KPM_STAGE_NAME,
+            project_dir.display()
+        );
+    }
+
+    eprintln!(
+        "warning: skipping KPM packaging; no artifact found and build prerequisites were not detected"
+    );
+    Ok(None)
+}
+
+fn should_attempt_kpm_build() -> bool {
+    match env_truthy("HYBRID_MOUNT_BUILD_KPM") {
+        Some(value) => value,
+        None => has_kpm_kernel_tree() && has_kpm_toolchain(),
+    }
+}
+
+fn env_truthy(name: &str) -> Option<bool> {
+    let value = env::var(name).ok()?;
+    let normalized = value.trim().to_ascii_lowercase();
+    Some(!matches!(
+        normalized.as_str(),
+        "" | "0" | "false" | "no" | "off"
+    ))
+}
+
+fn has_kpm_kernel_tree() -> bool {
+    env::var_os("HYBRID_MOUNT_KP_DIR")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("KP_DIR").map(PathBuf::from))
+        .map(|path| path.join("kernel").is_dir())
+        .unwrap_or_else(|| {
+            env::var_os("HOME")
+                .map(PathBuf::from)
+                .is_some_and(|home| home.join("AndroidPatch/kpm/kernel").is_dir())
+        })
+}
+
+fn has_kpm_toolchain() -> bool {
+    env::var_os("TARGET_COMPILE").is_some()
+        || env::var_os("ANDROID_NDK_LATEST_HOME").is_some()
+        || env::var_os("ANDROID_NDK").is_some()
+}
+
+fn build_kpm(project_dir: &Path) -> Result<()> {
+    let mut command = Command::new("make");
+    command.arg("-C").arg(project_dir);
+
+    if let Ok(kp_dir) = env::var("HYBRID_MOUNT_KP_DIR") {
+        command.env("KP_DIR", kp_dir);
+    }
+
+    let status = command
+        .status()
+        .with_context(|| format!("failed to build KPM in {}", project_dir.display()))?;
+    if !status.success() {
+        bail!("KPM build failed with exit code {:?}", status.code());
+    }
+    Ok(())
+}
+
+fn find_kpm_artifact(project_dir: &Path) -> Result<Option<PathBuf>> {
+    let out_dir = project_dir.join("out");
+    if !out_dir.is_dir() {
+        return Ok(None);
+    }
+
+    let mut artifacts = Vec::new();
+    for entry in fs::read_dir(&out_dir)? {
+        let path = entry?.path();
+        if path.extension() == Some(OsStr::new("kpm"))
+            && path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(KPM_MODULE_NAME))
+        {
+            artifacts.push(path);
+        }
+    }
+
+    artifacts.sort();
+    Ok(artifacts.pop())
 }
 
 fn generate_module_prop(stage_dir: &Path, info: &VersionInfo) -> Result<()> {

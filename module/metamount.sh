@@ -13,7 +13,7 @@ chmod 755 "$BINARY"
 "$BINARY" 2>&1
 EXIT_CODE=$?
 
-if [ "$EXIT_CODE" = "0" ]; then
+if [ "$EXIT_CODE" = "0" ] && [ -x /data/adb/ksud ]; then
   /data/adb/ksud kernel notify-module-mounted
 fi
 exit $EXIT_CODE

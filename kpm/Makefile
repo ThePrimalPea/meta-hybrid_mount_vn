@@ -1,8 +1,12 @@
 KPM_NAME := nuke_ext4_sysfs
-KPM_VERSION ?= 0.1.0
+KPM_VERSION ?= 0.2.0
 KPM_OUT := out/$(KPM_NAME)_$(KPM_VERSION).kpm
 
+ifdef HYBRID_MOUNT_KP_DIR
+KP_DIR ?= $(HYBRID_MOUNT_KP_DIR)
+else
 KP_DIR ?= $(HOME)/AndroidPatch/kpm
+endif
 
 OS_NAME := $(shell uname | tr A-Z a-z)
 MACHINE := $(shell uname -m)

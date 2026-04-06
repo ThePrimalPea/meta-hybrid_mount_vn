@@ -48,7 +48,7 @@ ui_print "- Installation complete"
 
 metamodule_hot_install() {
 
-  # ksu only for now, verify on apatch later
+  # Hot install is currently only supported on KernelSU.
   if [ ! "$KSU" = true ]; then
     return
   fi
@@ -90,4 +90,3 @@ metamodule_hot_install() {
 if [ "$MODULE_HOT_INSTALL_REQUEST" = true ]; then
   metamodule_hot_install
 fi
-

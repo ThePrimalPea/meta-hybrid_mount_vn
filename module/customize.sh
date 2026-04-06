@@ -36,6 +36,14 @@ rm -rf "$MODPATH/system"
 BASE_DIR="/data/adb/hybrid-mount"
 mkdir -p "$BASE_DIR"
 
+if [ -d "$MODPATH/kpm" ] && ls "$MODPATH"/kpm/*.kpm >/dev/null 2>&1; then
+  ui_print "- Installing APatch KPM assets..."
+  mkdir -p "$BASE_DIR/kpm"
+  rm -f "$BASE_DIR"/kpm/*.kpm
+  cp -f "$MODPATH"/kpm/*.kpm "$BASE_DIR/kpm/"
+  set_perm_recursive "$BASE_DIR/kpm" 0 0 0755 0644
+fi
+
 show_usage_notice_and_confirm() {
   local github_url="https://github.com/Hybrid-Mount/meta-hybrid_mount/blob/master/USAGE_NOTICE.md"
   local confirm_timeout=15
