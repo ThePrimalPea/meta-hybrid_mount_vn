@@ -1,4 +1,20 @@
 
+## v3.4.6
+
+
+### <!-- 1 --> Features
+
+- `xtask` Call notify crate directly
+
+
+
+### <!-- 8 --> Maintenance
+
+- Split notify into separate repository
+
+
+
+
 ## v3.4.5
 
 

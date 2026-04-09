@@ -880,7 +880,7 @@ checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
 name = "hybrid-mount"
-version = "3.4.5"
+version = "3.4.6"
 dependencies = [
  "android_logger",
  "anyhow",
@@ -1408,7 +1408,7 @@ dependencies = [
 [[package]]
 name = "notify"
 version = "0.1.0"
-source = "git+https://github.com/Hybrid-Mount/hybrid_mount_notify.git?branch=main#db1dcf4e590b41059b4bffc474470f8d45240c49"
+source = "git+https://github.com/Hybrid-Mount/hybrid_mount_notify.git?branch=main#bc12bffa89f865d63a52b3021a4123428061a2fb"
 dependencies = [
  "anyhow",
  "tgbot",
@@ -2092,7 +2092,7 @@ version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b"
 dependencies = [
- "errno 0.2.8",
+ "errno 0.3.14",
  "libc",
 ]
 
