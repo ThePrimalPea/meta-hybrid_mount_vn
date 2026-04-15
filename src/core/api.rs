@@ -410,9 +410,9 @@ fn statvfs_usage(path: &Path) -> Result<(u64, u64, u64, f64)> {
     } else {
         stats.f_bsize
     };
-    let total_bytes = (stats.f_blocks as u64).saturating_mul(block_size);
-    let free_bytes = (stats.f_bavail as u64).saturating_mul(block_size);
-    let used_bytes = total_bytes.saturating_sub((stats.f_bfree as u64).saturating_mul(block_size));
+    let total_bytes = stats.f_blocks.saturating_mul(block_size);
+    let free_bytes = stats.f_bavail.saturating_mul(block_size);
+    let used_bytes = total_bytes.saturating_sub(stats.f_bfree.saturating_mul(block_size));
     let percent = if total_bytes > 0 {
         used_bytes as f64 * 100.0 / total_bytes as f64
     } else {
