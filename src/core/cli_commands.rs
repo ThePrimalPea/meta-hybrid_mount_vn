@@ -13,6 +13,8 @@ use crate::conf::{
 };
 
 pub fn run(cli: &Cli, command: &Commands) -> Result<()> {
+    let _ = crate::utils::init_logging();
+
     match command {
         Commands::GenConfig { output, force } => cli_handlers::handle_gen_config(output, *force),
         Commands::ShowConfig => cli_handlers::handle_show_config(cli),

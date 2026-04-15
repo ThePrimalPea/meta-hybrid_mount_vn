@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod fallback;
-mod hymofs;
 mod magic;
 mod overlay;
 
@@ -20,6 +19,7 @@ use crate::{
         recovery::{FailureStage, ModuleStageFailure},
         runtime_state::MountStatistics,
     },
+    mount::hymofs,
 };
 
 pub struct ExecutionResult {

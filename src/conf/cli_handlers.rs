@@ -20,13 +20,8 @@ use crate::{
     },
     core::{api, inventory::listing as modules, runtime_state::RuntimeState, user_hide_rules},
     defs,
-    sys::{
-        hymofs::{
-            self, HymoMapsRule, HymoMountHideArg, HymoSpoofKstat, HymoSpoofUname,
-            HymoStatfsSpoofArg,
-        },
-        lkm,
-    },
+    mount::hymofs as hymofs_mount,
+    sys::{hymofs, lkm},
     utils,
 };
 
@@ -77,7 +72,7 @@ fn apply_live_if_possible<F>(config: &Config, description: &str, operation: F) -
 where
     F: FnOnce() -> Result<()>,
 {
-    if !hymofs::can_operate(config.hymofs.ignore_protocol_mismatch) {
+    if !hymofs_mount::can_operate(config) {
         crate::scoped_log!(
             warn,
             "cli:hymofs",
@@ -93,15 +88,7 @@ where
 }
 
 fn require_live_hymofs(config: &Config, description: &str) -> Result<()> {
-    if hymofs::can_operate(config.hymofs.ignore_protocol_mismatch) {
-        return Ok(());
-    }
-
-    bail!(
-        "HymoFS is not available for {} (status={})",
-        description,
-        hymofs::status_name(hymofs::check_status())
-    );
+    hymofs_mount::require_live(config, description)
 }
 
 fn print_config_apply_result(path: &Path, what: &str, applied: bool) {
@@ -115,142 +102,14 @@ fn print_config_apply_result(path: &Path, what: &str, applied: bool) {
     }
 }
 
-fn to_c_ulong(value: u64, field_name: &str) -> Result<libc::c_ulong> {
-    libc::c_ulong::try_from(value)
-        .map_err(|_| anyhow::anyhow!("{field_name} value {value} does not fit into c_ulong"))
-}
-
-fn to_c_long(value: i64, field_name: &str) -> Result<libc::c_long> {
-    libc::c_long::try_from(value)
-        .map_err(|_| anyhow::anyhow!("{field_name} value {value} does not fit into c_long"))
-}
-
 fn clear_pathbuf(path: &mut PathBuf) {
     *path = PathBuf::new();
 }
 
-fn apply_mount_hide_from_config(config: &Config) -> Result<()> {
-    let enabled = config.hymofs.enable_mount_hide
-        || config.hymofs.enable_hidexattr
-        || config.hymofs.mount_hide.enabled
-        || !config.hymofs.mount_hide.path_pattern.as_os_str().is_empty();
-
-    if enabled && !config.hymofs.mount_hide.path_pattern.as_os_str().is_empty() {
-        let arg =
-            HymoMountHideArg::new(true, Some(config.hymofs.mount_hide.path_pattern.as_path()))?;
-        hymofs::set_mount_hide_config(&arg)
-    } else {
-        hymofs::set_mount_hide(enabled)
-    }
-}
-
-fn apply_statfs_spoof_from_config(config: &Config) -> Result<()> {
-    let enabled = config.hymofs.enable_statfs_spoof
-        || config.hymofs.enable_hidexattr
-        || config.hymofs.statfs_spoof.enabled
-        || !config.hymofs.statfs_spoof.path.as_os_str().is_empty()
-        || config.hymofs.statfs_spoof.spoof_f_type != 0;
-
-    if enabled
-        && (!config.hymofs.statfs_spoof.path.as_os_str().is_empty()
-            || config.hymofs.statfs_spoof.spoof_f_type != 0)
-    {
-        let arg = HymoStatfsSpoofArg::with_path_and_f_type(
-            true,
-            config.hymofs.statfs_spoof.path.as_path(),
-            to_c_ulong(
-                config.hymofs.statfs_spoof.spoof_f_type,
-                "statfs_spoof.spoof_f_type",
-            )?,
-        )?;
-        hymofs::set_statfs_spoof_config(&arg)
-    } else {
-        hymofs::set_statfs_spoof(enabled)
-    }
-}
-
-fn apply_uname_from_config(config: &Config) -> Result<()> {
-    let mut uname = HymoSpoofUname::default();
-    if !config.hymofs.uname.sysname.is_empty() {
-        uname.set_sysname(&config.hymofs.uname.sysname)?;
-    }
-    if !config.hymofs.uname.nodename.is_empty() {
-        uname.set_nodename(&config.hymofs.uname.nodename)?;
-    }
-    if !config.hymofs.uname.release.is_empty() {
-        uname.set_release(&config.hymofs.uname.release)?;
-    }
-    if !config.hymofs.uname.version.is_empty() {
-        uname.set_version(&config.hymofs.uname.version)?;
-    }
-    if !config.hymofs.uname.machine.is_empty() {
-        uname.set_machine(&config.hymofs.uname.machine)?;
-    }
-    if !config.hymofs.uname.domainname.is_empty() {
-        uname.set_domainname(&config.hymofs.uname.domainname)?;
-    }
-    if !config.hymofs.uname_release.is_empty() {
-        uname.set_release(&config.hymofs.uname_release)?;
-    }
-    if !config.hymofs.uname_version.is_empty() {
-        uname.set_version(&config.hymofs.uname_version)?;
-    }
-    hymofs::set_uname(&uname)
-}
-
-fn clear_hymofs_runtime_best_effort() {
-    let empty_uname = HymoSpoofUname::default();
-
-    for (name, result) in [
-        ("set_enabled(false)", hymofs::set_enabled(false)),
-        ("clear_rules", hymofs::clear_rules()),
-        ("clear_maps_rules", hymofs::clear_maps_rules()),
-        ("set_uname(clear)", hymofs::set_uname(&empty_uname)),
-        ("set_cmdline(clear)", hymofs::set_cmdline_str("")),
-        ("set_hide_uids(clear)", hymofs::set_hide_uids(&[])),
-        ("set_mount_hide(false)", hymofs::set_mount_hide(false)),
-        ("set_maps_spoof(false)", hymofs::set_maps_spoof(false)),
-        ("set_statfs_spoof(false)", hymofs::set_statfs_spoof(false)),
-        ("set_stealth(false)", hymofs::set_stealth(false)),
-        ("set_debug(false)", hymofs::set_debug(false)),
-    ] {
-        if let Err(err) = result {
-            crate::scoped_log!(
-                debug,
-                "cli:hymofs",
-                "disable cleanup skipped: operation={}, error={:#}",
-                name,
-                err
-            );
-        }
-    }
-
-    hymofs::invalidate_status_cache();
-}
-
-fn apply_kstat_rule(rule: &HymoKstatRuleConfig) -> Result<()> {
-    let mut native_rule = HymoSpoofKstat::new(
-        to_c_ulong(rule.target_ino, "target_ino")?,
-        &rule.target_pathname,
-    )?;
-    native_rule.spoofed_ino = to_c_ulong(rule.spoofed_ino, "spoofed_ino")?;
-    native_rule.spoofed_dev = to_c_ulong(rule.spoofed_dev, "spoofed_dev")?;
-    native_rule.spoofed_nlink = rule.spoofed_nlink;
-    native_rule.spoofed_size = rule.spoofed_size;
-    native_rule.spoofed_atime_sec = to_c_long(rule.spoofed_atime_sec, "spoofed_atime_sec")?;
-    native_rule.spoofed_atime_nsec = to_c_long(rule.spoofed_atime_nsec, "spoofed_atime_nsec")?;
-    native_rule.spoofed_mtime_sec = to_c_long(rule.spoofed_mtime_sec, "spoofed_mtime_sec")?;
-    native_rule.spoofed_mtime_nsec = to_c_long(rule.spoofed_mtime_nsec, "spoofed_mtime_nsec")?;
-    native_rule.spoofed_ctime_sec = to_c_long(rule.spoofed_ctime_sec, "spoofed_ctime_sec")?;
-    native_rule.spoofed_ctime_nsec = to_c_long(rule.spoofed_ctime_nsec, "spoofed_ctime_nsec")?;
-    native_rule.spoofed_blksize = to_c_ulong(rule.spoofed_blksize, "spoofed_blksize")?;
-    native_rule.spoofed_blocks = rule.spoofed_blocks;
-    native_rule.is_static = if rule.is_static { 1 } else { 0 };
-
-    match hymofs::update_spoof_kstat(&native_rule) {
-        Ok(()) => Ok(()),
-        Err(_) => hymofs::add_spoof_kstat(&native_rule),
-    }
+fn apply_live_runtime_sync(config: &Config, description: &str) -> Result<bool> {
+    apply_live_if_possible(config, description, || {
+        hymofs_mount::sync_runtime_config(config)
+    })
 }
 
 fn detect_rule_file_type(path: &Path) -> Result<i32> {
@@ -425,7 +284,7 @@ pub fn handle_api_features() -> Result<()> {
 pub fn handle_api_hooks(cli: &Cli) -> Result<()> {
     let config = load_effective_config(cli)?;
     require_live_hymofs(&config, "read HymoFS hooks")?;
-    println!("{}", hymofs::get_hooks()?);
+    println!("{}", hymofs_mount::hook_lines()?.join("\n"));
     Ok(())
 }
 
@@ -442,7 +301,7 @@ pub fn handle_hide_add(cli: &Cli, path: &Path) -> Result<()> {
     let added = user_hide_rules::add_user_hide_rule(path)?;
     if added {
         let config = load_effective_config(cli)?;
-        if hymofs::can_operate(config.hymofs.ignore_protocol_mismatch)
+        if hymofs_mount::can_operate(&config)
             && let Err(err) = hymofs::hide_path(path)
         {
             crate::scoped_log!(
@@ -486,57 +345,18 @@ pub fn handle_hide_apply(cli: &Cli) -> Result<()> {
 pub fn handle_hymofs_status(cli: &Cli) -> Result<()> {
     let config = load_effective_config(cli)?;
     let runtime_state = RuntimeState::load().unwrap_or_default();
-    let (status_name, available, protocol_version, feature_bits, feature_names, hooks, rule_count) =
-        if config.hymofs.enabled {
-            let status = hymofs::check_status();
-            let protocol_version = hymofs::get_protocol_version().ok();
-            let feature_bits = hymofs::get_features().ok();
-            let feature_names = feature_bits.map(hymofs::feature_names).unwrap_or_default();
-            let hooks: Vec<String> = hymofs::get_hooks()
-                .map(|value| {
-                    value
-                        .lines()
-                        .map(str::trim)
-                        .filter(|line| !line.is_empty())
-                        .map(ToString::to_string)
-                        .collect()
-                })
-                .unwrap_or_default();
-            let rule_count = hymofs::get_active_rules()
-                .map(|value| api::parse_hymofs_rule_listing(&value).len())
-                .unwrap_or(0);
-
-            (
-                hymofs::status_name(status).to_string(),
-                status == hymofs::HymoFsStatus::Available,
-                protocol_version,
-                feature_bits,
-                feature_names,
-                hooks,
-                rule_count,
-            )
-        } else {
-            (
-                "disabled".to_string(),
-                false,
-                None,
-                None,
-                Vec::new(),
-                Vec::new(),
-                0,
-            )
-        };
+    let hymofs_info = hymofs_mount::collect_runtime_info(&config);
 
     let output = json!({
-        "status": status_name,
-        "available": available,
-        "protocol_version": protocol_version,
-        "feature_bits": feature_bits,
-        "feature_names": feature_names,
-        "hooks": hooks,
-        "rule_count": rule_count,
-        "user_hide_rule_count": user_hide_rules::user_hide_rule_count(),
-        "mirror_path": config.hymofs.mirror_path,
+        "status": hymofs_info.status,
+        "available": hymofs_info.available,
+        "protocol_version": hymofs_info.protocol_version,
+        "feature_bits": hymofs_info.feature_bits,
+        "feature_names": hymofs_info.feature_names,
+        "hooks": hymofs_info.hooks,
+        "rule_count": hymofs_info.rule_count,
+        "user_hide_rule_count": hymofs_info.user_hide_rule_count,
+        "mirror_path": hymofs_info.mirror_path,
         "lkm": api::build_lkm_payload(&config),
         "config": &config.hymofs,
         "runtime": {
@@ -566,7 +386,6 @@ pub fn handle_lkm_status(cli: &Cli) -> Result<()> {
 }
 
 pub fn handle_lkm_load(cli: &Cli) -> Result<()> {
-    let _ = utils::init_logging();
     let config = load_effective_config(cli)?;
     lkm::load(&config.hymofs)?;
     hymofs::invalidate_status_cache();
@@ -575,7 +394,6 @@ pub fn handle_lkm_load(cli: &Cli) -> Result<()> {
 }
 
 pub fn handle_lkm_unload(cli: &Cli) -> Result<()> {
-    let _ = utils::init_logging();
     let config = load_effective_config(cli)?;
     lkm::unload(&config.hymofs)?;
     hymofs::invalidate_status_cache();
@@ -617,12 +435,11 @@ pub fn handle_lkm_clear_kmi(cli: &Cli) -> Result<()> {
 
 pub fn handle_hymofs_list(cli: &Cli) -> Result<()> {
     let config = load_effective_config(cli)?;
-    let payload =
-        if config.hymofs.enabled && hymofs::check_status() == hymofs::HymoFsStatus::Available {
-            api::parse_hymofs_rule_listing(&hymofs::get_active_rules()?)
-        } else {
-            Vec::new()
-        };
+    let payload = if config.hymofs.enabled && hymofs_mount::can_operate(&config) {
+        api::parse_hymofs_rule_listing(&hymofs::get_active_rules()?)
+    } else {
+        Vec::new()
+    };
     println!(
         "{}",
         serde_json::to_string_pretty(&payload).context("Failed to serialize HymoFS rules")?
@@ -651,7 +468,7 @@ pub fn handle_hymofs_features() -> Result<()> {
 }
 
 pub fn handle_hymofs_hooks() -> Result<()> {
-    println!("{}", hymofs::get_hooks()?);
+    println!("{}", hymofs_mount::hook_lines()?.join("\n"));
     Ok(())
 }
 
@@ -685,10 +502,10 @@ pub fn handle_hymofs_set_enabled(cli: &Cli, enabled: bool) -> Result<()> {
     let path = save_hymofs_config_for_cli(cli, &config)?;
     let applied = apply_live_if_possible(&config, "set_enabled", || {
         if enabled {
-            hymofs::set_mirror_path(&config.hymofs.mirror_path)?;
+            hymofs_mount::sync_runtime_config(&config)?;
             hymofs::set_enabled(true)?;
         } else {
-            clear_hymofs_runtime_best_effort();
+            hymofs_mount::clear_runtime_best_effort();
         }
         Ok(())
     })?;
@@ -709,12 +526,7 @@ pub fn handle_hymofs_set_hidexattr(cli: &Cli, enabled: bool) -> Result<()> {
     let mut config = load_effective_config(cli)?;
     config.hymofs.enable_hidexattr = enabled;
     let path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied = apply_live_if_possible(&config, "set_hidexattr", || {
-        hymofs::set_stealth(config.hymofs.enable_stealth || enabled)?;
-        apply_mount_hide_from_config(&config)?;
-        hymofs::set_maps_spoof(config.hymofs.enable_maps_spoof || config.hymofs.enable_hidexattr)?;
-        apply_statfs_spoof_from_config(&config)
-    })?;
+    let applied = apply_live_runtime_sync(&config, "set_hidexattr")?;
     print_config_apply_result(&path, "HymoFS hidexattr setting", applied);
     Ok(())
 }
@@ -723,9 +535,7 @@ pub fn handle_hymofs_set_mirror(cli: &Cli, path_value: &Path) -> Result<()> {
     let mut config = load_effective_config(cli)?;
     config.hymofs.mirror_path = path_value.to_path_buf();
     let path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied = apply_live_if_possible(&config, "set_mirror_path", || {
-        hymofs::set_mirror_path(path_value)
-    })?;
+    let applied = apply_live_runtime_sync(&config, "set_mirror_path")?;
     print_config_apply_result(&path, "HymoFS mirror path", applied);
     Ok(())
 }
@@ -734,7 +544,7 @@ pub fn handle_hymofs_set_debug(cli: &Cli, enabled: bool) -> Result<()> {
     let mut config = load_effective_config(cli)?;
     config.hymofs.enable_kernel_debug = enabled;
     let path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied = apply_live_if_possible(&config, "set_debug", || hymofs::set_debug(enabled))?;
+    let applied = apply_live_runtime_sync(&config, "set_debug")?;
     print_config_apply_result(&path, "HymoFS kernel debug setting", applied);
     Ok(())
 }
@@ -743,7 +553,7 @@ pub fn handle_hymofs_set_stealth(cli: &Cli, enabled: bool) -> Result<()> {
     let mut config = load_effective_config(cli)?;
     config.hymofs.enable_stealth = enabled;
     let path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied = apply_live_if_possible(&config, "set_stealth", || hymofs::set_stealth(enabled))?;
+    let applied = apply_live_runtime_sync(&config, "set_stealth")?;
     print_config_apply_result(&path, "HymoFS stealth setting", applied);
     Ok(())
 }
@@ -778,9 +588,7 @@ pub fn handle_hymofs_set_mount_hide(
     }
 
     let save_path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied = apply_live_if_possible(&config, "set_mount_hide", || {
-        apply_mount_hide_from_config(&config)
-    })?;
+    let applied = apply_live_runtime_sync(&config, "set_mount_hide")?;
     print_config_apply_result(&save_path, "HymoFS mount_hide setting", applied);
     Ok(())
 }
@@ -789,9 +597,7 @@ pub fn handle_hymofs_set_maps_spoof(cli: &Cli, enabled: bool) -> Result<()> {
     let mut config = load_effective_config(cli)?;
     config.hymofs.enable_maps_spoof = enabled;
     let path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied = apply_live_if_possible(&config, "set_maps_spoof", || {
-        hymofs::set_maps_spoof(enabled)
-    })?;
+    let applied = apply_live_runtime_sync(&config, "set_maps_spoof")?;
     print_config_apply_result(&path, "HymoFS maps_spoof setting", applied);
     Ok(())
 }
@@ -817,9 +623,7 @@ pub fn handle_hymofs_set_statfs_spoof(
     }
 
     let save_path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied = apply_live_if_possible(&config, "set_statfs_spoof", || {
-        apply_statfs_spoof_from_config(&config)
-    })?;
+    let applied = apply_live_runtime_sync(&config, "set_statfs_spoof")?;
     print_config_apply_result(&save_path, "HymoFS statfs_spoof setting", applied);
     Ok(())
 }
@@ -866,8 +670,7 @@ pub fn handle_hymofs_set_uname(
     }
 
     let path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied =
-        apply_live_if_possible(&config, "set_uname", || apply_uname_from_config(&config))?;
+    let applied = apply_live_runtime_sync(&config, "set_uname")?;
     print_config_apply_result(&path, "HymoFS uname spoof setting", applied);
     Ok(())
 }
@@ -879,9 +682,7 @@ pub fn handle_hymofs_clear_uname(cli: &Cli) -> Result<()> {
     config.hymofs.uname_version.clear();
 
     let path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied = apply_live_if_possible(&config, "clear_uname", || {
-        hymofs::set_uname(&HymoSpoofUname::default())
-    })?;
+    let applied = apply_live_runtime_sync(&config, "clear_uname")?;
     print_config_apply_result(&path, "HymoFS uname spoof setting", applied);
     Ok(())
 }
@@ -891,8 +692,7 @@ pub fn handle_hymofs_set_cmdline(cli: &Cli, value: &str) -> Result<()> {
     config.hymofs.cmdline_value = value.to_string();
 
     let path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied =
-        apply_live_if_possible(&config, "set_cmdline", || hymofs::set_cmdline_str(value))?;
+    let applied = apply_live_runtime_sync(&config, "set_cmdline")?;
     print_config_apply_result(&path, "HymoFS cmdline spoof setting", applied);
     Ok(())
 }
@@ -902,7 +702,7 @@ pub fn handle_hymofs_clear_cmdline(cli: &Cli) -> Result<()> {
     config.hymofs.cmdline_value.clear();
 
     let path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied = apply_live_if_possible(&config, "clear_cmdline", || hymofs::set_cmdline_str(""))?;
+    let applied = apply_live_runtime_sync(&config, "clear_cmdline")?;
     print_config_apply_result(&path, "HymoFS cmdline spoof setting", applied);
     Ok(())
 }
@@ -912,7 +712,7 @@ pub fn handle_hymofs_set_hide_uids(cli: &Cli, uids: &[u32]) -> Result<()> {
     config.hymofs.hide_uids = uids.to_vec();
 
     let path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied = apply_live_if_possible(&config, "set_hide_uids", || hymofs::set_hide_uids(uids))?;
+    let applied = apply_live_runtime_sync(&config, "set_hide_uids")?;
     print_config_apply_result(&path, "HymoFS hide_uids setting", applied);
     Ok(())
 }
@@ -922,8 +722,7 @@ pub fn handle_hymofs_clear_hide_uids(cli: &Cli) -> Result<()> {
     config.hymofs.hide_uids.clear();
 
     let path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied =
-        apply_live_if_possible(&config, "clear_hide_uids", || hymofs::set_hide_uids(&[]))?;
+    let applied = apply_live_runtime_sync(&config, "clear_hide_uids")?;
     print_config_apply_result(&path, "HymoFS hide_uids setting", applied);
     Ok(())
 }
@@ -957,16 +756,7 @@ pub fn handle_hymofs_add_maps_rule(
     }
 
     let path_out = save_hymofs_config_for_cli(cli, &config)?;
-    let native_rule = HymoMapsRule::new(
-        to_c_ulong(target_ino, "target_ino")?,
-        to_c_ulong(target_dev, "target_dev")?,
-        to_c_ulong(spoofed_ino, "spoofed_ino")?,
-        to_c_ulong(spoofed_dev, "spoofed_dev")?,
-        path,
-    )?;
-    let applied = apply_live_if_possible(&config, "add_maps_rule", || {
-        hymofs::add_maps_rule(&native_rule)
-    })?;
+    let applied = apply_live_runtime_sync(&config, "add_maps_rule")?;
     print_config_apply_result(&path_out, "HymoFS maps rule", applied);
     Ok(())
 }
@@ -976,7 +766,7 @@ pub fn handle_hymofs_clear_maps_rules(cli: &Cli) -> Result<()> {
     config.hymofs.maps_rules.clear();
 
     let path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied = apply_live_if_possible(&config, "clear_maps_rules", hymofs::clear_maps_rules)?;
+    let applied = apply_live_runtime_sync(&config, "clear_maps_rules")?;
     print_config_apply_result(&path, "HymoFS maps rules", applied);
     Ok(())
 }
@@ -1031,8 +821,7 @@ pub fn handle_hymofs_upsert_kstat_rule(
     }
 
     let path = save_hymofs_config_for_cli(cli, &config)?;
-    let applied =
-        apply_live_if_possible(&config, "upsert_kstat_rule", || apply_kstat_rule(&new_rule))?;
+    let applied = apply_live_runtime_sync(&config, "upsert_kstat_rule")?;
     print_config_apply_result(&path, "HymoFS kstat rule", applied);
     Ok(())
 }

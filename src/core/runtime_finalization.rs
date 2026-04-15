@@ -8,16 +8,12 @@ use anyhow::Result;
 use crate::{
     conf::config::Config,
     core::{
-        api, module_status,
+        module_status,
         ops::{executor::ExecutionResult, planner::MountPlan},
-        runtime_state::{HymoFsRuntimeInfo, RuntimeState},
-        user_hide_rules,
+        runtime_state::RuntimeState,
     },
     defs,
-    sys::{
-        hymofs::{self, HymoFsStatus},
-        lkm,
-    },
+    mount::hymofs,
 };
 
 pub fn finalize(
@@ -49,7 +45,7 @@ fn build_runtime_state(
     plan: &MountPlan,
     result: &ExecutionResult,
 ) -> RuntimeState {
-    let hymofs = collect_hymofs_runtime_info(config);
+    let hymofs = hymofs::collect_runtime_info(config);
     RuntimeState::new(
         storage_mode.to_string(),
         mount_point.to_path_buf(),
@@ -61,62 +57,6 @@ fn build_runtime_state(
         hymofs,
         defs::DAEMON_LOG_FILE.into(),
     )
-}
-
-fn collect_hymofs_runtime_info(config: &Config) -> HymoFsRuntimeInfo {
-    if !config.hymofs.enabled {
-        return HymoFsRuntimeInfo {
-            status: "disabled".to_string(),
-            available: false,
-            lkm_loaded: lkm::is_loaded(),
-            lkm_autoload: config.hymofs.lkm_autoload,
-            lkm_kmi_override: config.hymofs.lkm_kmi_override.clone(),
-            lkm_current_kmi: lkm::current_kmi(),
-            lkm_dir: config.hymofs.lkm_dir.clone(),
-            protocol_version: None,
-            feature_bits: None,
-            feature_names: Vec::new(),
-            hooks: Vec::new(),
-            rule_count: 0,
-            user_hide_rule_count: user_hide_rules::user_hide_rule_count(),
-            mirror_path: config.hymofs.mirror_path.clone(),
-        };
-    }
-
-    let status = hymofs::check_status();
-    let protocol_version = hymofs::get_protocol_version().ok();
-    let feature_bits = hymofs::get_features().ok();
-    let feature_names = feature_bits.map(hymofs::feature_names).unwrap_or_default();
-    let hooks = hymofs::get_hooks()
-        .map(|value| {
-            value
-                .lines()
-                .map(str::trim)
-                .filter(|line| !line.is_empty())
-                .map(ToString::to_string)
-                .collect()
-        })
-        .unwrap_or_default();
-    let rule_count = hymofs::get_active_rules()
-        .map(|value| api::parse_hymofs_rule_listing(&value).len())
-        .unwrap_or(0);
-
-    HymoFsRuntimeInfo {
-        status: hymofs::status_name(status).to_string(),
-        available: status == HymoFsStatus::Available,
-        lkm_loaded: lkm::is_loaded(),
-        lkm_autoload: config.hymofs.lkm_autoload,
-        lkm_kmi_override: config.hymofs.lkm_kmi_override.clone(),
-        lkm_current_kmi: lkm::current_kmi(),
-        lkm_dir: config.hymofs.lkm_dir.clone(),
-        protocol_version,
-        feature_bits,
-        feature_names,
-        hooks,
-        rule_count,
-        user_hide_rule_count: user_hide_rules::user_hide_rule_count(),
-        mirror_path: config.hymofs.mirror_path.clone(),
-    }
 }
 
 fn collect_active_mounts(plan: &MountPlan) -> Vec<String> {

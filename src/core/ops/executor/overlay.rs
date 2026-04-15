@@ -8,7 +8,12 @@ use anyhow::Result;
 use super::fallback;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use crate::mount::umount_mgr;
-use crate::{conf::config, core::ops::planner::OverlayOperation, defs, mount::overlayfs};
+use crate::{
+    conf::config,
+    core::ops::planner::OverlayOperation,
+    defs,
+    mount::{hymofs as hymofs_mount, overlayfs},
+};
 
 pub(super) fn mount_overlay(op: &OverlayOperation, config: &config::Config) -> Result<Vec<String>> {
     let involved_modules = fallback::collect_involved_modules(op);
@@ -69,7 +74,7 @@ pub(super) fn mount_overlay(op: &OverlayOperation, config: &config::Config) -> R
     );
 
     if config.hymofs.enabled
-        && crate::sys::hymofs::can_operate(config.hymofs.ignore_protocol_mismatch)
+        && hymofs_mount::can_operate(config)
         && let Err(err) = crate::sys::hymofs::hide_overlay_xattrs(Path::new(&op.target))
     {
         crate::scoped_log!(
