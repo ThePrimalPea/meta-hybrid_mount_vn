@@ -15,7 +15,7 @@ use anyhow::{Context, Result, bail};
 use rustix::fs::ioctl_ficlone;
 use walkdir::WalkDir;
 
-use super::xattr::internal_copy_extended_attributes;
+use super::xattr::{apply_best_effort_live_context, internal_copy_extended_attributes};
 use crate::defs;
 
 #[derive(Debug, Default)]
@@ -96,6 +96,7 @@ fn native_cp_r(
             let _ = fs::set_permissions(dst, src_meta.permissions());
         }
         let _ = internal_copy_extended_attributes(src, dst);
+        let _ = apply_best_effort_live_context(dst, relative, managed_partitions);
     }
 
     for entry in fs::read_dir(src)? {
@@ -152,6 +153,7 @@ fn native_cp_r(
         }
 
         let _ = internal_copy_extended_attributes(&src_path, &dst_path);
+        let _ = apply_best_effort_live_context(&dst_path, &next_relative, managed_partitions);
     }
     Ok(())
 }

@@ -11,7 +11,6 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail, ensure};
-use jwalk::WalkDir;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use rustix::mount::{UnmountFlags, unmount as umount};
 
@@ -19,12 +18,10 @@ use crate::{
     core::storage::backends::Ext4Backend,
     mount::overlayfs::utils as overlay_utils,
     sys::{
-        fs::{ensure_dir_exists, lgetfilecon, lsetfilecon},
+        fs::{ensure_dir_exists, lsetfilecon},
         nuke,
     },
 };
-
-const DEFAULT_SELINUX_CONTEXT: &str = "u:object_r:system_file:s0";
 
 pub(super) fn setup_ext4_image(
     target: &Path,
@@ -44,7 +41,6 @@ pub(super) fn setup_ext4_image(
 
     mount_ext4_with_repair(img_path, target)?;
     reset_mount_state(target)?;
-    relabel_mount_tree(target);
 
     Ok(Ext4Backend::new(target))
 }
@@ -168,74 +164,4 @@ fn reset_mount_state(target: &Path) -> Result<()> {
         umount(target, UnmountFlags::DETACH)?;
     }
     Ok(())
-}
-
-fn live_context_candidates(relative: &Path) -> Vec<PathBuf> {
-    let mut candidates = Vec::new();
-    let mut current = if relative.as_os_str().is_empty() {
-        PathBuf::from("/")
-    } else {
-        Path::new("/").join(relative)
-    };
-
-    loop {
-        candidates.push(current.clone());
-
-        if current == Path::new("/") {
-            break;
-        }
-
-        let Some(parent) = current.parent() else {
-            break;
-        };
-        current = if parent.as_os_str().is_empty() {
-            PathBuf::from("/")
-        } else {
-            parent.to_path_buf()
-        };
-    }
-
-    candidates
-}
-
-fn best_effort_live_context(relative: &Path) -> String {
-    for candidate in live_context_candidates(relative) {
-        if let Ok(context) = lgetfilecon(&candidate) {
-            return context;
-        }
-    }
-
-    DEFAULT_SELINUX_CONTEXT.to_string()
-}
-
-fn relabel_mount_tree(target: &Path) {
-    for dir_entry in WalkDir::new(target).parallelism(jwalk::Parallelism::Serial) {
-        if let Some(path) = dir_entry.ok().map(|dir_entry| dir_entry.path()) {
-            let relative = path.strip_prefix(target).unwrap_or(path.as_path());
-            let context = best_effort_live_context(relative);
-            let _ = lsetfilecon(&path, &context);
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-
-    use super::live_context_candidates;
-
-    #[test]
-    fn live_context_candidates_walk_exact_path_then_parents() {
-        let candidates = live_context_candidates(Path::new("product/overlay/Foo.apk"));
-
-        assert_eq!(
-            candidates,
-            vec![
-                Path::new("/product/overlay/Foo.apk").to_path_buf(),
-                Path::new("/product/overlay").to_path_buf(),
-                Path::new("/product").to_path_buf(),
-                Path::new("/").to_path_buf(),
-            ]
-        );
-    }
 }

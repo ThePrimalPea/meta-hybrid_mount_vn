@@ -1,7 +1,7 @@
 // Copyright 2026 Hybrid Mount Developers
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use std::{fs, io::Read, os::unix::ffi::OsStrExt};
 
@@ -131,4 +131,91 @@ pub fn is_overlay_xattr_supported() -> Result<bool> {
 
 pub fn internal_copy_extended_attributes(src: &Path, dst: &Path) -> Result<()> {
     copy_extended_attributes(src, dst)
+}
+
+fn logical_live_candidates(relative: &Path, managed_partitions: &[String]) -> Vec<PathBuf> {
+    let components: Vec<_> = relative.components().collect();
+    let Some(start_idx) = components.iter().position(|component| {
+        let Component::Normal(value) = component else {
+            return false;
+        };
+        let Some(value) = value.to_str() else {
+            return false;
+        };
+        managed_partitions.iter().any(|item| item == value)
+    }) else {
+        return Vec::new();
+    };
+
+    let mut current = PathBuf::from("/");
+    for component in components.iter().skip(start_idx) {
+        current.push(component.as_os_str());
+    }
+
+    let mut candidates = Vec::new();
+    loop {
+        candidates.push(current.clone());
+
+        if current == Path::new("/") {
+            break;
+        }
+
+        let Some(parent) = current.parent() else {
+            break;
+        };
+        current = if parent.as_os_str().is_empty() {
+            PathBuf::from("/")
+        } else {
+            parent.to_path_buf()
+        };
+    }
+
+    candidates
+}
+
+pub fn apply_best_effort_live_context(
+    dst: &Path,
+    relative: &Path,
+    managed_partitions: &[String],
+) -> Result<()> {
+    for candidate in logical_live_candidates(relative, managed_partitions) {
+        if let Ok(context) = lgetfilecon(&candidate) {
+            let _ = lsetfilecon(dst, &context);
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::logical_live_candidates;
+
+    #[test]
+    fn logical_live_candidates_skip_module_root_and_walk_parents() {
+        let managed = vec![
+            "system".to_string(),
+            "product".to_string(),
+            "vendor".to_string(),
+        ];
+
+        let candidates = logical_live_candidates(
+            Path::new("module_a/system/product/overlay/Foo.apk"),
+            &managed,
+        );
+
+        assert_eq!(
+            candidates,
+            vec![
+                Path::new("/system/product/overlay/Foo.apk").to_path_buf(),
+                Path::new("/system/product/overlay").to_path_buf(),
+                Path::new("/system/product").to_path_buf(),
+                Path::new("/system").to_path_buf(),
+                Path::new("/").to_path_buf(),
+            ]
+        );
+    }
 }
