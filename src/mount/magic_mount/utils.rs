@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::{
-    collections::HashSet,
+    collections::{HashSet, btree_map::Entry},
     fs::{self, DirEntry, Metadata, create_dir, create_dir_all, read_link},
     io::{BufRead, BufReader},
     os::unix::fs::{MetadataExt, symlink},
@@ -16,6 +16,7 @@ use rustix::mount::mount_bind;
 
 use crate::{
     core::inventory,
+    defs,
     mount::node::Node,
     sys::fs::{lgetfilecon, lsetfilecon},
     utils::validate_module_id,
@@ -146,7 +147,10 @@ pub fn collect_module_files(
     let mut system = Node::new_root("system");
     let module_root = module_dir;
     let mut has_file = HashSet::new();
-    let mut partitions = HashSet::new();
+    let mut partitions: HashSet<String> = defs::BUILTIN_PARTITIONS
+        .iter()
+        .map(|partition| partition.to_string())
+        .collect();
     partitions.insert("system".to_string());
     partitions.extend(extra_partitions.iter().cloned());
 
@@ -256,7 +260,22 @@ pub fn collect_module_files(
         );
 
         for p in touched_partitions {
-            has_file.insert(system.collect_module_files(module_path.join(p))?);
+            if p == "system" {
+                has_file.insert(system.collect_module_files(module_path.join(&p))?);
+                continue;
+            }
+
+            let partition_node = match system.children.entry(p.clone()) {
+                Entry::Occupied(mut occupied) => {
+                    if occupied.get().file_type == crate::mount::node::NodeFileType::Symlink {
+                        occupied.insert(Node::new_root(&p));
+                    }
+                    occupied.into_mut()
+                }
+                Entry::Vacant(vacant) => vacant.insert(Node::new_root(&p)),
+            };
+
+            has_file.insert(partition_node.collect_module_files(module_path.join(&p))?);
         }
     }
 
@@ -353,4 +372,55 @@ where
         src_symlink.display()
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(unix)]
+    use std::{fs, os::unix::fs::symlink};
+
+    use tempfile::tempdir;
+
+    use super::collect_module_files;
+
+    #[test]
+    #[cfg(unix)]
+    fn collect_module_files_keeps_partition_contents_under_partition_node() {
+        let temp = tempdir().expect("failed to create temp dir");
+        let module_root = temp.path().join("modules");
+        let module_dir = module_root.join("Iconify");
+
+        fs::create_dir_all(module_dir.join("product/overlay"))
+            .expect("failed to create product overlay");
+        fs::write(
+            module_dir.join("product/overlay/TestOverlay.apk"),
+            "dummy overlay",
+        )
+        .expect("failed to write overlay file");
+        fs::create_dir_all(module_dir.join("system")).expect("failed to create system dir");
+        fs::write(module_dir.join("module.prop"), "id=Iconify\nname=Iconify\n")
+            .expect("failed to write module.prop");
+        symlink("../product", module_dir.join("system/product"))
+            .expect("failed to create product symlink");
+
+        let tree = collect_module_files(
+            &module_root,
+            &[],
+            std::iter::once("Iconify".to_string()).collect(),
+        )
+        .expect("collect should succeed")
+        .expect("expected a mount tree");
+
+        let system = tree.children.get("system").expect("missing system node");
+        assert!(
+            !system.children.contains_key("overlay"),
+            "product subtree should not be flattened under /system"
+        );
+
+        let product = system
+            .children
+            .get("product")
+            .expect("missing product partition node");
+        assert!(product.children.contains_key("overlay"));
+    }
 }

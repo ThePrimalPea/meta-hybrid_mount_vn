@@ -364,8 +364,21 @@ fn generate_with_root(
                                             }
                                         };
                                         let sub_path = sub_entry.path();
-                                        if !sub_path.is_dir() {
-                                            continue;
+                                        match sub_entry.file_type() {
+                                            Ok(file_type) if file_type.is_symlink() => continue,
+                                            Ok(file_type) if !file_type.is_dir() => continue,
+                                            Ok(_) => {}
+                                            Err(err) => {
+                                                crate::scoped_log!(
+                                                    warn,
+                                                    "planner",
+                                                    "subtree file type failed: module={}, path={}, error={}",
+                                                    module.id,
+                                                    sub_path.display(),
+                                                    err
+                                                );
+                                                continue;
+                                            }
                                         }
                                         let sub_name = sub_entry.file_name();
 
@@ -743,6 +756,48 @@ mod tests {
         assert_eq!(
             plan.overlay_ops[0].lowerdirs,
             vec![storage_root.join("mod_vendor/system/vendor/lib64")]
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn planner_skips_symlinked_partition_aliases_when_real_partition_exists() {
+        let temp = tempdir().expect("failed to create temp dir");
+        let system_root = temp.path().join("rootfs");
+        let storage_root = temp.path().join("storage");
+        let module_root = storage_root.join("mod_product");
+
+        fs::create_dir_all(system_root.join("system")).expect("failed to create system root");
+        fs::create_dir_all(system_root.join("product/overlay"))
+            .expect("failed to create product/overlay");
+        symlink("../product", system_root.join("system/product"))
+            .expect("failed to create /system/product symlink");
+        fs::create_dir_all(module_root.join("product/overlay"))
+            .expect("failed to create module product/overlay");
+        fs::create_dir_all(module_root.join("system")).expect("failed to create module system dir");
+        fs::write(module_root.join("module.prop"), "name=Test Module\n")
+            .expect("failed to write module.prop");
+        symlink("../product", module_root.join("system/product"))
+            .expect("failed to create module /system/product symlink");
+
+        let module = Module {
+            id: "mod_product".to_string(),
+            source_path: module_root,
+            rules: ModuleRules::default(),
+        };
+
+        let plan = generate_with_root(&Config::default(), &[module], &storage_root, &system_root)
+            .expect("planner should succeed");
+
+        assert_eq!(plan.overlay_ops.len(), 1);
+        assert_eq!(plan.overlay_ops[0].partition_name, "product");
+        assert_eq!(
+            plan.overlay_ops[0].target,
+            system_root.join("product/overlay").to_string_lossy()
+        );
+        assert_eq!(
+            plan.overlay_ops[0].lowerdirs,
+            vec![storage_root.join("mod_product/product/overlay")]
         );
     }
 }

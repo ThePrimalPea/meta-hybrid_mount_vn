@@ -156,7 +156,7 @@ impl Node {
         S: ToString,
     {
         let path = entry.path();
-        match entry.metadata() {
+        match path.symlink_metadata() {
             Ok(metadata) => {
                 let file_type = if metadata.file_type().is_char_device() && metadata.rdev() == 0 {
                     NodeFileType::Whiteout
@@ -193,6 +193,11 @@ impl Node {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use std::{fs, os::unix::fs::symlink};
+
+    use tempfile::tempdir;
+
     use super::{Node, NodeFileType};
 
     #[test]
@@ -229,5 +234,28 @@ mod tests {
             first_idx < last_idx,
             "debug output should be sorted: {rendered}"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn new_module_preserves_symlink_type() {
+        let temp = tempdir().expect("failed to create temp dir");
+        let target = temp.path().join("target");
+        fs::create_dir_all(&target).expect("failed to create target dir");
+        symlink(&target, temp.path().join("link")).expect("failed to create symlink");
+
+        let entry = temp
+            .path()
+            .read_dir()
+            .expect("failed to read temp dir")
+            .find_map(|entry| {
+                let entry = entry.expect("failed to read dir entry");
+                (entry.file_name() == "link").then_some(entry)
+            })
+            .expect("missing link entry");
+
+        let node = Node::new_module(&"link", &entry).expect("failed to create node");
+
+        assert_eq!(node.file_type, NodeFileType::Symlink);
     }
 }
