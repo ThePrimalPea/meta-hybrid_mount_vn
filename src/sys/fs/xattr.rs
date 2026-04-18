@@ -1,7 +1,10 @@
 // Copyright 2026 Hybrid Mount Developers
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::{fs, path::{Component, Path, PathBuf}};
+use std::{
+    fs,
+    path::{Component, Path, PathBuf},
+};
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use std::{io::Read, os::unix::ffi::OsStrExt};
 
@@ -152,9 +155,7 @@ fn resolve_target_path(path: &Path) -> PathBuf {
             if link_target.is_absolute() {
                 link_target
             } else {
-                path.parent()
-                    .unwrap_or(Path::new("/"))
-                    .join(link_target)
+                path.parent().unwrap_or(Path::new("/")).join(link_target)
             }
         }
         Err(_) => path.to_path_buf(),
@@ -225,9 +226,7 @@ fn resolve_target_directory_with_root(
         .or_else(|| Some(root.to_path_buf()))
 }
 
-fn resolve_live_target_directory_context(
-    target_dir: &Path,
-) -> Option<(PathBuf, String)> {
+fn resolve_live_target_directory_context(target_dir: &Path) -> Option<(PathBuf, String)> {
     let mut current = target_dir.to_path_buf();
     loop {
         if let Ok(context) = lgetfilecon(&current) {
@@ -262,9 +261,12 @@ pub fn apply_best_effort_live_context(
     };
     let dst_is_dir = dst.is_dir();
 
-    let Some(target_dir) =
-        resolve_target_directory_with_root(relative, dst_is_dir, managed_partitions, Path::new("/"))
-    else {
+    let Some(target_dir) = resolve_target_directory_with_root(
+        relative,
+        dst_is_dir,
+        managed_partitions,
+        Path::new("/"),
+    ) else {
         if dst_is_dir {
             crate::scoped_log!(
                 warn,
@@ -339,10 +341,7 @@ mod tests {
         )
         .expect("target should resolve");
 
-        assert_eq!(
-            target,
-            rootfs.join("vendor/firmware/gen80000_sqe.fw")
-        );
+        assert_eq!(target, rootfs.join("vendor/firmware/gen80000_sqe.fw"));
     }
 
     #[test]
