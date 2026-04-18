@@ -59,6 +59,19 @@ fn execute_ksu_nuke(path: &Path) -> Result<()> {
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
+fn apatch_nuke_strict_verify() -> bool {
+    std::env::var("HYBRID_MOUNT_APATCH_NUKE_STRICT_VERIFY")
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn execute_apatch_nuke(path: &Path) -> Result<()> {
     let kp_bin = std::env::var("HYBRID_MOUNT_APATCH_KP_BIN")
         .unwrap_or_else(|_| "/data/adb/ap/bin/kptools".to_string());
@@ -75,6 +88,7 @@ fn execute_apatch_nuke(path: &Path) -> Result<()> {
         std::env::var("HYBRID_MOUNT_APATCH_KPM_ID").unwrap_or_else(|_| "nuke_ext4_sysfs".into());
     let call_mode =
         std::env::var("HYBRID_MOUNT_APATCH_KPM_CALL_MODE").unwrap_or_else(|_| "control".into());
+    let strict_verify = apatch_nuke_strict_verify();
     let procfs_node = probe_ext4_procfs_node(path).ok().flatten();
     let before_exists = procfs_node.as_ref().is_some_and(|node| node.exists());
 
@@ -142,16 +156,37 @@ fn execute_apatch_nuke(path: &Path) -> Result<()> {
     if let Some(rc) = call_rc
         && rc < 0
     {
-        bail!(
-            "kpm invoke reported failure: mode={call_mode}, rc={rc}, output={}",
-            format_output(&call_output)
-        );
+        if !strict_verify && rc == -(libc::EEXIST as i64) {
+            crate::scoped_log!(
+                warn,
+                "nuke",
+                "kpm invoke returned -EEXIST in best-effort mode: mode={}, rc={}, output={}",
+                call_mode,
+                rc,
+                format_output(&call_output)
+            );
+        } else {
+            bail!(
+                "kpm invoke reported failure: mode={call_mode}, rc={rc}, output={}",
+                format_output(&call_output)
+            );
+        }
     }
 
     if let Some(node) = procfs_node {
         let after_exists = node.exists();
         if after_exists {
-            bail!("procfs node still present after nuke: {}", node.display());
+            if strict_verify {
+                bail!("procfs node still present after nuke: {}", node.display());
+            }
+            crate::scoped_log!(
+                warn,
+                "nuke",
+                "procfs node still present after nuke (best-effort mode): path={}, before_exists={}, after_exists={}",
+                node.display(),
+                before_exists,
+                after_exists
+            );
         } else {
             crate::scoped_log!(
                 debug,
