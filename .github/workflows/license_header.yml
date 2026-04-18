@@ -1,9 +1,24 @@
+# Copyright (C) 2026 YuzakiKokuban <heibanbaize@gmail.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
 name: Manage License Headers
 
 on:
-  schedule:
-    - cron: '0 0 * * 1'
-  workflow_dispatch:
+  push:
+  pull_request:
 
 jobs:
   license-check:
@@ -12,24 +27,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6
-      
-      - name: Install addlicense
-        run: go install github.com/google/addlicense@latest
 
-      - name: Run addlicense
-        run: |
-          ~/go/bin/addlicense -v -c "Hybrid Mount Developers" -s -l GPL-3.0-or-later -y 2026 src xtask webui
-
-      - name: Check for changes
-        id: git-check
-        run: |
-          git diff --exit-code || echo "changes=true" >> $GITHUB_OUTPUT
-
-      - name: Commit changes
-        if: steps.git-check.outputs.changes == 'true'
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add .
-          git commit -m "chore: update license headers [skip ci]"
-          git push
+      - name: Run HawkEye License Check
+        uses: korandoru/hawkeye@v6
