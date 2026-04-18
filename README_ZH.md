@@ -24,6 +24,7 @@ Hybrid Mount 是面向 **KernelSU** 与 **APatch** 的挂载编排元模块。
 - [架构说明](#架构说明)
 - [仓库结构](#仓库结构)
 - [配置说明](#配置说明)
+- [HymoFS](#hymofs)
 - [策略行为矩阵](#策略行为矩阵)
 - [CLI 命令](#cli-命令)
 - [构建方式](#构建方式)
@@ -104,6 +105,86 @@ default_mode = "magic"
 "system/bin/tool" = "overlay"
 "vendor/lib64/libfoo.so" = "ignore"
 ```
+
+## HymoFS
+
+`HymoFS` 是一个可选的内核/LKM 后端，用于处理单靠 OverlayFS 或 bind mount 不够表达的运行时能力。
+
+它在项目里主要承担两类工作：
+
+- `mode = "hymofs"` 的挂载映射：把模块或路径解析到 HymoFS mirror 树中的内容
+- 额外运行时特性：stealth/hide-xattr、mount hide、`/proc/<pid>/maps` 伪装、`statfs` 伪装、UID 隐藏、uname/cmdline 伪装，以及按目标生效的 kstat 伪装规则
+
+### 什么时候会真正启用运行时
+
+`hymofs.enabled = true` 只是允许使用 HymoFS。Hybrid Mount 只有在满足下面任一条件时，才会真正把 HymoFS runtime 打开：
+
+- 生成出来的挂载计划中存在至少一个 HymoFS 模块或路径
+- 配置了任一辅助特性：`enable_hidexattr`、`enable_mount_hide`、`enable_maps_spoof`、`enable_statfs_spoof`、`hide_uids`、`cmdline_value`、`uname*`、`maps_rules`、`kstat_rules`，或持久化的 user hide 规则
+
+几个和实际行为强相关的细节：
+
+- `enable_hidexattr` 是兼容模式总开关，实际会一并启用 `stealth`、`mount_hide`、`maps_spoof`、`statfs_spoof`
+- `mount_hide.path_pattern` 与 `statfs_spoof.{path,spoof_f_type}` 本身也会让对应特性被判定为启用
+- CLI 里执行 disable 时，现在会同步清空这些结构化附属字段，避免“明明关了但因为残留参数又被判定为开启”的情况
+
+### 关键配置项
+
+| 字段 | 作用 |
+| --- | --- |
+| `hymofs.enabled` | HymoFS 集成总开关。 |
+| `hymofs.ignore_protocol_mismatch` | 协议版本不一致时是否仍允许继续操作。 |
+| `hymofs.lkm_autoload` | 启动时是否尝试自动加载 HymoFS LKM。 |
+| `hymofs.lkm_dir` / `hymofs.lkm_kmi_override` | LKM 搜索目录与可选 KMI 覆盖。 |
+| `hymofs.mirror_path` | HymoFS 规则使用的 mirror 根目录，默认 `/dev/hymo_mirror`。 |
+| `hymofs.enable_kernel_debug` | 打开内核侧 debug 输出。 |
+| `hymofs.enable_stealth` | 显式启用 stealth。 |
+| `hymofs.enable_hidexattr` | 兼容模式总开关，会联动多项 hide/spoof 能力。 |
+| `hymofs.enable_mount_hide` / `hymofs.mount_hide.path_pattern` | 全局或按路径模式启用 mount hide。 |
+| `hymofs.enable_maps_spoof` / `hymofs.maps_rules` | 启用 maps spoof，并安装 inode/device 映射规则。 |
+| `hymofs.enable_statfs_spoof` / `hymofs.statfs_spoof.*` | 启用通用或按路径生效的 `statfs` 伪装。 |
+| `hymofs.hide_uids` | 配置需要隐藏的 UID 集合。 |
+| `hymofs.uname.*`、`hymofs.uname_release`、`hymofs.uname_version` | 结构化与兼容字段两套 uname 伪装配置。 |
+| `hymofs.cmdline_value` | 替换内核 cmdline 内容。 |
+| `hymofs.kstat_rules` | 按目标应用的 stat 元数据伪装规则。 |
+
+### 示例
+
+```toml
+[hymofs]
+enabled = true
+lkm_autoload = true
+mirror_path = "/dev/hymo_mirror"
+enable_mount_hide = true
+
+[rules.my_module]
+default_mode = "hymofs"
+
+[rules.my_module.paths]
+"system/bin/su" = "hymofs"
+```
+
+### 常用命令
+
+```bash
+# 查看运行时/LKM 状态
+hybrid-mount hymofs status
+hybrid-mount hymofs version
+hybrid-mount hymofs features
+hybrid-mount lkm status
+
+# 配置并实时同步常见特性
+hybrid-mount hymofs enable
+hybrid-mount hymofs disable
+hybrid-mount hymofs mount-hide enable --path-pattern /dev/hymo_mirror
+hybrid-mount hymofs statfs-spoof enable --path /system --f-type 0x794c7630
+hybrid-mount hymofs maps add --target-ino 1 --target-dev 2 --spoofed-ino 3 --spoofed-dev 4 --path /dev/hymo_mirror/system/bin/sh
+hybrid-mount hymofs kstat upsert --target-ino 11 --target-path /system/bin/app_process64 --spoofed-ino 22 --spoofed-dev 33
+```
+
+运维注意：
+
+- `hymofs kstat clear-config` 只会移除持久化配置；已经下发到内核侧的 kstat 规则，通常仍需要重载 HymoFS LKM 或重建整套 runtime 才会完全清掉。
 
 ## 策略行为矩阵
 

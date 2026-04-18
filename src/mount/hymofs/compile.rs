@@ -18,13 +18,12 @@ use std::{
     collections::HashSet,
     fs,
     os::unix::fs::{FileTypeExt, MetadataExt},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 #[cfg(test)]
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
-    path::Component,
 };
 
 use anyhow::{Context, Result, bail};
@@ -285,6 +284,43 @@ fn resolve_path_for_hymofs_with_root(system_root: &Path, path: &Path) -> PathBuf
     virtual_path
 }
 
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    let mut saw_root = false;
+
+    for component in path.components() {
+        match component {
+            Component::RootDir => {
+                normalized.push(Path::new("/"));
+                saw_root = true;
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                let _ = normalized.pop();
+                if saw_root && normalized.as_os_str().is_empty() {
+                    normalized.push(Path::new("/"));
+                }
+            }
+            Component::Normal(value) => normalized.push(value),
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+        }
+    }
+
+    if saw_root && normalized.as_os_str().is_empty() {
+        PathBuf::from("/")
+    } else {
+        normalized
+    }
+}
+
+fn normalize_partition_root(path: &Path) -> PathBuf {
+    match fs::read_link(path) {
+        Ok(target) if target.is_absolute() => normalize_path(&target),
+        Ok(target) => normalize_path(&path.parent().unwrap_or(Path::new("/")).join(target)),
+        Err(_) => normalize_path(path),
+    }
+}
+
 fn mirror_module_root(config: &config::Config, module: &Module) -> Result<PathBuf> {
     let module_root = config.hymofs.mirror_path.join(&module.id);
     if module_root.exists() {
@@ -410,8 +446,7 @@ pub(super) fn compile_rules_with_root(
             if !partition_root.is_dir() {
                 continue;
             }
-            let normalized_partition_root =
-                fs::canonicalize(&partition_root).unwrap_or_else(|_| partition_root.clone());
+            let normalized_partition_root = normalize_partition_root(&partition_root);
             if !scanned_partition_roots.insert(normalized_partition_root) {
                 crate::scoped_log!(
                     debug,

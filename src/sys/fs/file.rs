@@ -28,7 +28,9 @@ use anyhow::{Context, Result, bail};
 use rustix::fs::ioctl_ficlone;
 use walkdir::WalkDir;
 
-use super::xattr::{apply_best_effort_live_context, internal_copy_extended_attributes};
+use super::xattr::{
+    LiveContextCache, apply_best_effort_live_context_with_cache, internal_copy_extended_attributes,
+};
 use crate::defs;
 
 #[derive(Debug, Default)]
@@ -47,12 +49,30 @@ fn is_managed_partition_path(relative: &Path, managed_partitions: &[String]) -> 
 
 pub fn atomic_write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, content: C) -> Result<()> {
     let path = path.as_ref();
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    ensure_dir_exists(parent)?;
 
-    let mut tempfile = tempfile::Builder::new().tempfile()?;
+    let mut tempfile = tempfile::Builder::new()
+        .tempfile_in(parent)
+        .with_context(|| {
+            format!(
+                "failed to create temp file for atomic write in {}",
+                parent.display()
+            )
+        })?;
 
     tempfile.write_all(content.as_ref())?;
 
-    fs::rename(tempfile.path(), path)?;
+    fs::rename(tempfile.path(), path).with_context(|| {
+        format!(
+            "failed to atomically replace {} from {}",
+            path.display(),
+            tempfile.path().display()
+        )
+    })?;
 
     Ok(())
 }
@@ -97,7 +117,7 @@ fn native_cp_r(
     dst: &Path,
     relative: &Path,
     managed_partitions: &[String],
-    _repair: bool,
+    live_context_cache: &mut LiveContextCache,
     visited: &mut HashSet<(u64, u64)>,
     stats: &mut SyncDirStats,
 ) -> Result<()> {
@@ -109,7 +129,12 @@ fn native_cp_r(
             let _ = fs::set_permissions(dst, src_meta.permissions());
         }
         let _ = internal_copy_extended_attributes(src, dst);
-        let _ = apply_best_effort_live_context(dst, relative, managed_partitions);
+        let _ = apply_best_effort_live_context_with_cache(
+            dst,
+            relative,
+            managed_partitions,
+            live_context_cache,
+        );
     }
 
     for entry in fs::read_dir(src)? {
@@ -119,8 +144,8 @@ fn native_cp_r(
         let dst_path = dst.join(&file_name);
         let next_relative = relative.join(&file_name);
 
-        let metadata = entry.metadata()?;
-        let ft = metadata.file_type();
+        let ft = entry.file_type()?;
+        let metadata = fs::symlink_metadata(&src_path)?;
         let dev = metadata.dev();
         let ino = metadata.ino();
 
@@ -137,7 +162,7 @@ fn native_cp_r(
                 &dst_path,
                 &next_relative,
                 managed_partitions,
-                _repair,
+                live_context_cache,
                 visited,
                 stats,
             )?;
@@ -166,21 +191,22 @@ fn native_cp_r(
         }
 
         let _ = internal_copy_extended_attributes(&src_path, &dst_path);
-        let _ = apply_best_effort_live_context(&dst_path, &next_relative, managed_partitions);
+        let _ = apply_best_effort_live_context_with_cache(
+            &dst_path,
+            &next_relative,
+            managed_partitions,
+            live_context_cache,
+        );
     }
     Ok(())
 }
 
-pub fn sync_dir(
-    src: &Path,
-    dst: &Path,
-    repair_context: bool,
-    managed_partitions: &[String],
-) -> Result<SyncDirStats> {
+pub fn sync_dir(src: &Path, dst: &Path, managed_partitions: &[String]) -> Result<SyncDirStats> {
     if !src.exists() {
         return Ok(SyncDirStats::default());
     }
     ensure_dir_exists(dst)?;
+    let mut live_context_cache = LiveContextCache::default();
     let mut visited = HashSet::new();
     let mut stats = SyncDirStats::default();
     native_cp_r(
@@ -188,7 +214,7 @@ pub fn sync_dir(
         dst,
         Path::new(""),
         managed_partitions,
-        repair_context,
+        &mut live_context_cache,
         &mut visited,
         &mut stats,
     )
@@ -246,7 +272,7 @@ mod tests {
             .iter()
             .map(|item| item.to_string())
             .collect::<Vec<_>>();
-        let stats = sync_dir(&src, &dst, true, &managed).expect("sync_dir should succeed");
+        let stats = sync_dir(&src, &dst, &managed).expect("sync_dir should succeed");
 
         assert!(stats.has_mount_content);
         assert_eq!(stats.opaque_dirs, vec![dst.join("system/bin")]);
@@ -265,9 +291,10 @@ mod tests {
             .iter()
             .map(|item| item.to_string())
             .collect::<Vec<_>>();
-        let stats = sync_dir(&src, &dst, true, &managed).expect("sync_dir should succeed");
+        let stats = sync_dir(&src, &dst, &managed).expect("sync_dir should succeed");
 
         assert!(!stats.has_mount_content);
         assert!(stats.opaque_dirs.is_empty());
     }
+
 }

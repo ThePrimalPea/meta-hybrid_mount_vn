@@ -30,7 +30,7 @@ use crate::{
 
 pub fn perform_sync(modules: &[Module], target_base: &Path, config: &config::Config) -> Result<()> {
     crate::scoped_log!(info, "sync", "start: target={}", target_base.display());
-    let managed_partitions = build_managed_partitions(config);
+    let managed_partitions = defs::managed_partition_names(&config.partitions);
 
     prune_orphaned_modules(modules, target_base)?;
 
@@ -56,7 +56,7 @@ pub fn perform_sync(modules: &[Module], target_base: &Path, config: &config::Con
             let _ = fs::remove_dir_all(&tmp_dst);
         }
 
-        let sync_stats = match sync_dir(&module.source_path, &tmp_dst, true, &managed_partitions) {
+        let sync_stats = match sync_dir(&module.source_path, &tmp_dst, &managed_partitions) {
             Ok(stats) => stats,
             Err(e) => {
                 crate::scoped_log!(
@@ -217,17 +217,6 @@ fn prune_orphaned_modules(modules: &[Module], target_base: &Path) -> Result<()> 
     }
 
     Ok(())
-}
-
-fn build_managed_partitions(config: &config::Config) -> Vec<String> {
-    let mut managed = defs::BUILTIN_PARTITIONS
-        .iter()
-        .map(|item| item.to_string())
-        .collect::<Vec<_>>();
-    managed.extend(config.partitions.iter().cloned());
-    managed.sort();
-    managed.dedup();
-    managed
 }
 
 fn has_managed_mount_root(module: &Module, managed_partitions: &[String]) -> bool {

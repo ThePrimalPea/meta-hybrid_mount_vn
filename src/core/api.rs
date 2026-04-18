@@ -513,16 +513,9 @@ fn read_selinux_status() -> Result<String> {
 
 fn detect_partitions(config: &Config) -> Result<Vec<PartitionInfo>> {
     let mount_entries = read_mount_entries()?;
-    let mut names: BTreeSet<String> = defs::BUILTIN_PARTITIONS
-        .iter()
-        .map(|value| value.to_string())
-        .collect();
-    names.insert("system".to_string());
-    names.extend(config.partitions.iter().cloned());
-
     let mut partitions = Vec::new();
 
-    for name in names {
+    for name in defs::managed_partition_names(&config.partitions) {
         let mount_point = PathBuf::from("/").join(&name);
         let metadata = match fs::symlink_metadata(&mount_point) {
             Ok(metadata) => metadata,

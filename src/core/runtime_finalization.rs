@@ -55,7 +55,7 @@ fn build_runtime_state(
     config: &Config,
     storage_mode: &str,
     mount_point: &Path,
-    plan: &MountPlan,
+    _plan: &MountPlan,
     result: &ExecutionResult,
 ) -> RuntimeState {
     let previous_state = RuntimeState::load().unwrap_or_default();
@@ -66,7 +66,7 @@ fn build_runtime_state(
         result.overlay_module_ids.clone(),
         result.magic_module_ids.clone(),
         result.hymofs_module_ids.clone(),
-        collect_active_mounts(plan),
+        collect_active_mounts(result),
         result.mount_stats.clone(),
         hymofs,
         defs::DAEMON_LOG_FILE.into(),
@@ -78,14 +78,10 @@ fn build_runtime_state(
     state
 }
 
-fn collect_active_mounts(plan: &MountPlan) -> Vec<String> {
-    let mut active_mounts: Vec<String> = plan
-        .overlay_ops
-        .iter()
-        .map(|op| op.partition_name.clone())
-        .collect();
+fn collect_active_mounts(result: &ExecutionResult) -> Vec<String> {
+    let mut active_mounts = result.overlay_partitions.clone();
 
-    if !plan.hymofs_module_ids.is_empty() {
+    if result.hymofs_runtime_enabled {
         active_mounts.push("hymofs".to_string());
     }
 

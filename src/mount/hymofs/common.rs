@@ -14,20 +14,14 @@
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-use std::collections::HashSet;
-
 use anyhow::{Result, anyhow};
 
 use crate::{conf::config, defs};
 
-pub(super) fn build_managed_partitions(config: &config::Config) -> HashSet<String> {
-    let mut managed_partitions: HashSet<String> = defs::BUILTIN_PARTITIONS
-        .iter()
-        .map(|partition| partition.to_string())
-        .collect();
-    managed_partitions.insert("system".to_string());
-    managed_partitions.extend(config.partitions.iter().cloned());
-    managed_partitions
+pub(super) fn build_managed_partitions(
+    config: &config::Config,
+) -> std::collections::HashSet<String> {
+    defs::managed_partition_set(&config.partitions)
 }
 
 pub(super) fn effective_stealth_enabled(config: &config::Config) -> bool {

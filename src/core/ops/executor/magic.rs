@@ -18,12 +18,18 @@ use std::{collections::HashSet, path::Path};
 
 use anyhow::Result;
 
-use crate::{conf::config, core::runtime_state::MountStatistics, mount::magic_mount};
+use crate::{
+    conf::config,
+    core::{inventory::Module, runtime_state::MountStatistics},
+    mount::magic_mount,
+};
 
 pub(super) fn mount_magic(
+    modules: &[Module],
     ids: &[String],
     config: &config::Config,
     tempdir: &Path,
+    use_hymofs: bool,
 ) -> Result<(Vec<String>, MountStatistics)> {
     let magic_ws_path = tempdir.join("magic_workspace");
 
@@ -39,13 +45,19 @@ pub(super) fn mount_magic(
     }
 
     let module_ids: HashSet<String> = ids.iter().cloned().collect();
+    let selected_modules: Vec<Module> = modules
+        .iter()
+        .filter(|module| module_ids.contains(&module.id))
+        .cloned()
+        .collect();
 
     let stats = magic_mount::magic_mount(
         &magic_ws_path,
         tempdir,
         &config.mountsource,
         &config.partitions,
-        module_ids,
+        &selected_modules,
+        use_hymofs,
         !config.disable_umount,
     )?;
 

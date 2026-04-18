@@ -588,12 +588,12 @@ pub fn handle_hymofs_set_mount_hide(
     let mut config = load_effective_config(cli)?;
     config.hymofs.enable_mount_hide = enabled;
     config.hymofs.mount_hide.enabled = enabled;
-    match (enabled, path_pattern) {
-        (_, Some(path_pattern)) => {
-            config.hymofs.mount_hide.path_pattern = path_pattern.to_path_buf()
+    if enabled {
+        if let Some(path_pattern) = path_pattern {
+            config.hymofs.mount_hide.path_pattern = path_pattern.to_path_buf();
         }
-        (false, None) => clear_pathbuf(&mut config.hymofs.mount_hide.path_pattern),
-        (true, None) => {}
+    } else {
+        clear_pathbuf(&mut config.hymofs.mount_hide.path_pattern);
     }
 
     let save_path = save_hymofs_config_for_cli(cli, &config)?;
@@ -620,14 +620,15 @@ pub fn handle_hymofs_set_statfs_spoof(
     let mut config = load_effective_config(cli)?;
     config.hymofs.enable_statfs_spoof = enabled;
     config.hymofs.statfs_spoof.enabled = enabled;
-    match path_value {
-        Some(path) => config.hymofs.statfs_spoof.path = path.to_path_buf(),
-        None if !enabled => clear_pathbuf(&mut config.hymofs.statfs_spoof.path),
-        None => {}
-    }
-    if let Some(spoof_f_type) = spoof_f_type {
-        config.hymofs.statfs_spoof.spoof_f_type = spoof_f_type;
-    } else if !enabled {
+    if enabled {
+        if let Some(path) = path_value {
+            config.hymofs.statfs_spoof.path = path.to_path_buf();
+        }
+        if let Some(spoof_f_type) = spoof_f_type {
+            config.hymofs.statfs_spoof.spoof_f_type = spoof_f_type;
+        }
+    } else {
+        clear_pathbuf(&mut config.hymofs.statfs_spoof.path);
         config.hymofs.statfs_spoof.spoof_f_type = 0;
     }
 

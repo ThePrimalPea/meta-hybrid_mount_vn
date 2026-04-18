@@ -133,6 +133,7 @@ where
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use crate::mount::umount_mgr::send_umountable;
 use crate::{
+    core::inventory::Module,
     core::runtime_state::MountStatistics,
     mount::{
         magic_mount::utils::{clone_symlink, collect_module_files, mount_mirror},
@@ -528,7 +529,8 @@ pub fn magic_mount<P>(
     module_dir: &Path,
     mount_source: &str,
     extra_partitions: &[String],
-    need_id: HashSet<String>,
+    magic_modules: &[Module],
+    use_hymofs: bool,
     #[cfg(any(target_os = "linux", target_os = "android"))] umount: bool,
     #[cfg(not(any(target_os = "linux", target_os = "android")))] _umount: bool,
 ) -> Result<MountStatistics>
@@ -537,7 +539,8 @@ where
 {
     let mut context = MountContext::default();
 
-    if let Some(root) = collect_module_files(module_dir, extra_partitions, need_id)? {
+    if let Some(root) = collect_module_files(module_dir, extra_partitions, magic_modules, use_hymofs)?
+    {
         crate::scoped_log!(debug, "magic", "collected tree: {:?}", root);
         let tmp_root = tmp_path.as_ref();
         let tmp_dir = tmp_root.join("workdir");

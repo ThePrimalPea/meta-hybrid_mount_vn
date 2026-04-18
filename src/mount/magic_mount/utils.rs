@@ -15,7 +15,7 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 use std::{
-    collections::{HashSet, btree_map::Entry},
+    collections::{HashMap, HashSet, btree_map::Entry},
     fs::{self, DirEntry, Metadata, create_dir, create_dir_all, read_link},
     io::{BufRead, BufReader},
     os::unix::fs::{MetadataExt, symlink},
@@ -28,7 +28,8 @@ use rustix::fs::{Gid, Mode, Uid, chmod, chown};
 use rustix::mount::mount_bind;
 
 use crate::{
-    core::inventory,
+    conf::config::{ModuleRules, MountMode},
+    core::inventory::{self, Module},
     defs,
     mount::node::Node,
     sys::fs::{lgetfilecon, lsetfilecon},
@@ -151,21 +152,123 @@ where
     Ok(())
 }
 
+fn effective_mode(mode: &MountMode, use_hymofs: bool) -> MountMode {
+    if matches!(mode, MountMode::Hymofs) && !use_hymofs {
+        MountMode::Ignore
+    } else {
+        mode.clone()
+    }
+}
+
+fn path_has_descendant_rule(rules: &ModuleRules, relative_path: &Path) -> bool {
+    let relative = relative_path.to_string_lossy();
+    let prefix = format!("{relative}/");
+    rules.paths.keys().any(|path| path.starts_with(&prefix))
+}
+
+fn collect_magic_subtree(
+    target: &mut Node,
+    module_dir: &Path,
+    relative_path: &Path,
+    rules: &ModuleRules,
+    use_hymofs: bool,
+) -> Result<bool> {
+    let mut has_file = false;
+
+    for entry_result in module_dir.read_dir()? {
+        let entry = match entry_result {
+            Ok(entry) => entry,
+            Err(err) => {
+                crate::scoped_log!(
+                    warn,
+                    "magic:collect",
+                    "enumerate subtree failed: path={}, error={}",
+                    module_dir.display(),
+                    err
+                );
+                continue;
+            }
+        };
+
+        let file_name = entry.file_name();
+        let name = file_name.to_string_lossy().to_string();
+        let entry_path = entry.path();
+        let next_relative = relative_path.join(&file_name);
+        let effective_mode =
+            effective_mode(&rules.get_mode(next_relative.to_string_lossy().as_ref()), use_hymofs);
+
+        match entry.file_type() {
+            Ok(file_type) if file_type.is_dir() => {
+                let has_descendant_rules = path_has_descendant_rule(rules, &next_relative);
+                if matches!(effective_mode, MountMode::Magic) && !has_descendant_rules {
+                    if let Some(mut node) = Node::new_module(&name, &entry) {
+                        let subtree_has_file = node.collect_module_files(&entry_path)? || node.replace;
+                        if subtree_has_file {
+                            target.children.insert(name, node);
+                            has_file = true;
+                        }
+                    }
+                    continue;
+                }
+
+                if !has_descendant_rules {
+                    continue;
+                }
+
+                let Some(mut node) = Node::new_module(&name, &entry) else {
+                    continue;
+                };
+                let subtree_has_file =
+                    collect_magic_subtree(&mut node, &entry_path, &next_relative, rules, use_hymofs)?
+                        || node.replace;
+                if subtree_has_file {
+                    target.children.insert(name, node);
+                    has_file = true;
+                }
+            }
+            Ok(_) => {
+                if matches!(effective_mode, MountMode::Magic)
+                    && let Some(node) = Node::new_module(&name, &entry)
+                {
+                    if target.children.get(&name).is_some_and(|existing| {
+                        existing.file_type != crate::mount::node::NodeFileType::Symlink
+                    }) {
+                        continue;
+                    }
+                    target.children.insert(name, node);
+                    has_file = true;
+                }
+            }
+            Err(err) => {
+                crate::scoped_log!(
+                    warn,
+                    "magic:collect",
+                    "file type failed: path={}, error={}",
+                    entry_path.display(),
+                    err
+                );
+            }
+        }
+    }
+
+    Ok(has_file)
+}
+
 pub fn collect_module_files(
     module_dir: &Path,
     extra_partitions: &[String],
-    need_id: HashSet<String>,
+    magic_modules: &[Module],
+    use_hymofs: bool,
 ) -> Result<Option<Node>> {
     let mut root = Node::new_root("");
     let mut system = Node::new_root("system");
     let module_root = module_dir;
     let mut has_file = HashSet::new();
-    let mut partitions: HashSet<String> = defs::BUILTIN_PARTITIONS
+    let partitions = defs::managed_partition_set(extra_partitions);
+    let selected_rules: HashMap<&str, &ModuleRules> = magic_modules
         .iter()
-        .map(|partition| partition.to_string())
+        .map(|module| (module.id.as_str(), &module.rules))
         .collect();
-    partitions.insert("system".to_string());
-    partitions.extend(extra_partitions.iter().cloned());
 
     crate::scoped_log!(
         debug,
@@ -204,7 +307,7 @@ pub fn collect_module_files(
         };
         crate::scoped_log!(debug, "magic:collect", "module inspect: id={}", id);
 
-        if !need_id.contains(&id) {
+        let Some(rules) = selected_rules.get(id.as_str()).copied() else {
             crate::scoped_log!(
                 debug,
                 "magic:collect",
@@ -212,7 +315,7 @@ pub fn collect_module_files(
                 id
             );
             continue;
-        }
+        };
 
         let module_path = entry.path();
         let prop = module_path.join("module.prop");
@@ -274,7 +377,13 @@ pub fn collect_module_files(
 
         for p in touched_partitions {
             if p == "system" {
-                has_file.insert(system.collect_module_files(module_path.join(&p))?);
+                has_file.insert(collect_magic_subtree(
+                    &mut system,
+                    &module_path.join(&p),
+                    Path::new(&p),
+                    rules,
+                    use_hymofs,
+                )?);
                 continue;
             }
 
@@ -288,7 +397,13 @@ pub fn collect_module_files(
                 Entry::Vacant(vacant) => vacant.insert(Node::new_root(&p)),
             };
 
-            has_file.insert(partition_node.collect_module_files(module_path.join(&p))?);
+            has_file.insert(collect_magic_subtree(
+                partition_node,
+                &module_path.join(&p),
+                Path::new(&p),
+                rules,
+                use_hymofs,
+            )?);
         }
     }
 
@@ -375,7 +490,16 @@ where
 {
     let src_symlink = read_link(src.as_ref())?;
     symlink(&src_symlink, dst.as_ref())?;
-    lsetfilecon(dst.as_ref(), lgetfilecon(src.as_ref())?.as_str())?;
+    if let Err(err) = lsetfilecon(dst.as_ref(), lgetfilecon(src.as_ref())?.as_str()) {
+        crate::scoped_log!(
+            debug,
+            "magic:collect",
+            "clone symlink context skipped: dst={}, src={}, error={:#}",
+            dst.as_ref().display(),
+            src.as_ref().display(),
+            err
+        );
+    }
     crate::scoped_log!(
         debug,
         "magic:collect",
@@ -395,6 +519,10 @@ mod tests {
     use tempfile::tempdir;
 
     use super::collect_module_files;
+    use crate::{
+        conf::config::{ModuleRules, MountMode},
+        core::inventory::Module,
+    };
 
     #[test]
     #[cfg(unix)]
@@ -419,7 +547,15 @@ mod tests {
         let tree = collect_module_files(
             &module_root,
             &[],
-            std::iter::once("Iconify".to_string()).collect(),
+            &[Module {
+                id: "Iconify".to_string(),
+                source_path: module_dir.clone(),
+                rules: ModuleRules {
+                    default_mode: MountMode::Magic,
+                    ..ModuleRules::default()
+                },
+            }],
+            false,
         )
         .expect("collect should succeed")
         .expect("expected a mount tree");
@@ -436,4 +572,5 @@ mod tests {
             .expect("missing product partition node");
         assert!(product.children.contains_key("overlay"));
     }
+
 }

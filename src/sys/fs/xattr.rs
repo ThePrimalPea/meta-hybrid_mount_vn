@@ -15,6 +15,7 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 use std::{
+    collections::HashMap,
     fs,
     path::{Component, Path, PathBuf},
 };
@@ -26,20 +27,48 @@ use anyhow::Context;
 use anyhow::Result;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use extattr::{Flags as XattrFlags, lgetxattr, llistxattr, lsetxattr};
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use std::sync::OnceLock;
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 const SELINUX_XATTR: &str = "security.selinux";
 #[cfg(any(target_os = "linux", target_os = "android"))]
 const OVERLAY_OPAQUE_XATTR: &str = "trusted.overlay.opaque";
+#[cfg(any(target_os = "linux", target_os = "android"))]
+static TMPFS_XATTR_SUPPORTED: OnceLock<bool> = OnceLock::new();
+
+#[derive(Debug, Default)]
+pub struct LiveContextCache {
+    resolved_paths: HashMap<PathBuf, PathBuf>,
+    resolved_contexts: HashMap<PathBuf, Option<(PathBuf, String)>>,
+}
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn copy_extended_attributes(src: &Path, dst: &Path) -> Result<()> {
     if let Ok(ctx) = lgetfilecon(src) {
-        let _ = lsetfilecon(dst, &ctx);
+        if let Err(err) = lsetfilecon(dst, &ctx) {
+            crate::scoped_log!(
+                debug,
+                "selinux:context",
+                "copy context skipped: src={}, dst={}, error={:#}",
+                src.display(),
+                dst.display(),
+                err
+            );
+        }
     }
 
     if let Ok(opaque) = lgetxattr(src, OVERLAY_OPAQUE_XATTR) {
-        let _ = lsetxattr(dst, OVERLAY_OPAQUE_XATTR, &opaque, XattrFlags::empty());
+        if let Err(err) = lsetxattr(dst, OVERLAY_OPAQUE_XATTR, &opaque, XattrFlags::empty()) {
+            crate::scoped_log!(
+                debug,
+                "xattr",
+                "copy opaque xattr skipped: src={}, dst={}, error={}",
+                src.display(),
+                dst.display(),
+                err
+            );
+        }
     }
     if let Ok(xattrs) = llistxattr(src) {
         for xattr_name in xattrs {
@@ -50,7 +79,17 @@ fn copy_extended_attributes(src: &Path, dst: &Path) -> Result<()> {
                 && name_str != OVERLAY_OPAQUE_XATTR
                 && let Ok(val) = lgetxattr(src, &xattr_name)
             {
-                let _ = lsetxattr(dst, &xattr_name, &val, XattrFlags::empty());
+                if let Err(err) = lsetxattr(dst, &xattr_name, &val, XattrFlags::empty()) {
+                    crate::scoped_log!(
+                        debug,
+                        "xattr",
+                        "copy overlay xattr skipped: name={}, src={}, dst={}, error={}",
+                        name_str,
+                        src.display(),
+                        dst.display(),
+                        err
+                    );
+                }
             }
         }
     }
@@ -80,14 +119,19 @@ pub fn set_overlay_opaque<P: AsRef<Path>>(_path: P) -> Result<()> {
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn lsetfilecon<P: AsRef<Path>>(path: P, con: &str) -> Result<()> {
-    if let Err(e) = lsetxattr(
+    lsetxattr(
         path.as_ref(),
         SELINUX_XATTR,
         con.as_bytes(),
         XattrFlags::empty(),
-    ) {
-        let _ = e;
-    }
+    )
+    .with_context(|| {
+        format!(
+            "Failed to set SELinux context for {} to {}",
+            path.as_ref().display(),
+            con
+        )
+    })?;
     Ok(())
 }
 
@@ -116,6 +160,10 @@ pub fn lgetfilecon<P: AsRef<Path>>(_path: P) -> Result<String> {
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn is_overlay_xattr_supported() -> Result<bool> {
+    if let Some(cached) = TMPFS_XATTR_SUPPORTED.get() {
+        return Ok(*cached);
+    }
+
     use flate2::read::GzDecoder;
     let file = fs::File::open("/proc/config.gz")?;
 
@@ -123,21 +171,21 @@ pub fn is_overlay_xattr_supported() -> Result<bool> {
     let mut decoder = GzDecoder::new(file);
     decoder.read_to_string(&mut config)?;
 
-    for i in config.lines() {
-        if i.starts_with("#") {
-            continue;
+    let supported = config.lines().any(|line| {
+        if line.starts_with('#') {
+            return false;
         }
 
-        let Some((k, v)) = i.split_once('=') else {
-            continue;
+        let Some((k, v)) = line.split_once('=') else {
+            return false;
         };
 
-        if k.trim() == "CONFIG_TMPFS_XATTR" && v.trim() == "y" {
-            return Ok(true);
-        }
-    }
+        k.trim() == "CONFIG_TMPFS_XATTR" && v.trim() == "y"
+    });
 
-    Ok(false)
+    let _ = TMPFS_XATTR_SUPPORTED.set(supported);
+
+    Ok(supported)
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
@@ -151,15 +199,25 @@ pub fn internal_copy_extended_attributes(src: &Path, dst: &Path) -> Result<()> {
 
 fn managed_partition_start(relative: &Path, managed_partitions: &[String]) -> Option<usize> {
     let components: Vec<_> = relative.components().collect();
-    components.iter().position(|component| {
-        let Component::Normal(value) = component else {
-            return false;
-        };
-        let Some(value) = value.to_str() else {
-            return false;
-        };
-        managed_partitions.iter().any(|item| item == value)
-    })
+    let first = components.first().and_then(|component| match component {
+        Component::Normal(value) => value.to_str(),
+        _ => None,
+    });
+    if first.is_some_and(|value| managed_partitions.iter().any(|item| item == value)) {
+        return Some(0);
+    }
+
+    let second = components.get(1).and_then(|component| match component {
+        Component::Normal(value) => value.to_str(),
+        _ => None,
+    });
+    if first.is_some_and(|value| value.starts_with("module"))
+        && second.is_some_and(|value| managed_partitions.iter().any(|item| item == value))
+    {
+        return Some(1);
+    }
+
+    None
 }
 
 fn should_apply_live_context(relative: &Path, managed_partitions: &[String]) -> bool {
@@ -210,66 +268,143 @@ fn normalize_path(path: &Path) -> PathBuf {
     }
 }
 
+fn resolve_target_path_cached(path: &Path, cache: &mut LiveContextCache) -> PathBuf {
+    if let Some(cached) = cache.resolved_paths.get(path) {
+        return cached.clone();
+    }
+
+    let resolved = resolve_target_path(path);
+    cache
+        .resolved_paths
+        .insert(path.to_path_buf(), resolved.clone());
+    resolved
+}
+
+#[cfg(test)]
 fn resolve_live_target_path_with_root(
     relative: &Path,
     managed_partitions: &[String],
     root: &Path,
 ) -> Option<PathBuf> {
+    let mut cache = LiveContextCache::default();
+    resolve_live_target_path_with_root_cached(relative, managed_partitions, root, &mut cache)
+}
+
+fn resolve_live_target_path_with_root_cached(
+    relative: &Path,
+    managed_partitions: &[String],
+    root: &Path,
+    cache: &mut LiveContextCache,
+) -> Option<PathBuf> {
     let components: Vec<_> = relative.components().collect();
     let start_idx = managed_partition_start(relative, managed_partitions)?;
 
-    let mut current = resolve_target_path(&root.join(components[start_idx].as_os_str()));
+    let mut current =
+        resolve_target_path_cached(&root.join(components[start_idx].as_os_str()), cache);
     for component in components.iter().skip(start_idx + 1) {
-        current = resolve_target_path(&current.join(component.as_os_str()));
+        current = resolve_target_path_cached(&current.join(component.as_os_str()), cache);
     }
 
     Some(current)
 }
 
-fn resolve_target_directory_with_root(
-    relative: &Path,
-    dst_is_dir: bool,
-    managed_partitions: &[String],
-    root: &Path,
-) -> Option<PathBuf> {
-    let target_path = resolve_live_target_path_with_root(relative, managed_partitions, root)?;
+fn resolved_target_directory(target_path: &Path, dst_is_dir: bool) -> PathBuf {
     if dst_is_dir {
-        return Some(target_path);
+        return target_path.to_path_buf();
     }
 
     target_path
         .parent()
         .map(|parent| parent.to_path_buf())
-        .or_else(|| Some(root.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("/"))
 }
 
-fn resolve_live_target_directory_context(target_dir: &Path) -> Option<(PathBuf, String)> {
+fn prefer_exact_target_context_path(target_path: &Path, dst_is_dir: bool) -> PathBuf {
+    if dst_is_dir || fs::symlink_metadata(target_path).is_ok() {
+        return target_path.to_path_buf();
+    }
+
+    target_path
+        .parent()
+        .map(|parent| parent.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("/"))
+}
+
+fn resolve_live_target_directory_context_cached(
+    target_dir: &Path,
+    cache: &mut LiveContextCache,
+) -> Option<(PathBuf, String)> {
+    if let Some(cached) = cache.resolved_contexts.get(target_dir) {
+        return cached.clone();
+    }
+
     let mut current = target_dir.to_path_buf();
-    loop {
+    let mut traversed = Vec::new();
+
+    let resolved = loop {
+        if let Some(cached) = cache.resolved_contexts.get(&current) {
+            break cached.clone();
+        }
+
+        traversed.push(current.clone());
         if let Ok(context) = lgetfilecon(&current) {
-            return Some((current, context));
+            break Some((current.clone(), context));
         }
 
         if current == Path::new("/") {
-            break;
+            break None;
         }
 
         let Some(parent) = current.parent() else {
-            break;
+            break None;
         };
         current = if parent.as_os_str().is_empty() {
             PathBuf::from("/")
         } else {
             parent.to_path_buf()
         };
+    };
+
+    for path in traversed {
+        cache.resolved_contexts.insert(path, resolved.clone());
     }
-    None
+
+    resolved
 }
 
-pub fn apply_best_effort_live_context(
+fn resolve_live_target_context_cached(
+    target_path: &Path,
+    dst_is_dir: bool,
+    cache: &mut LiveContextCache,
+) -> Option<(PathBuf, String)> {
+    if let Some(cached) = cache.resolved_contexts.get(target_path) {
+        return cached.clone();
+    }
+
+    if !dst_is_dir
+        && fs::symlink_metadata(target_path).is_ok()
+        && let Ok(context) = lgetfilecon(target_path)
+    {
+        let resolved = Some((target_path.to_path_buf(), context));
+        cache
+            .resolved_contexts
+            .insert(target_path.to_path_buf(), resolved.clone());
+        return resolved;
+    }
+
+    let target_dir = prefer_exact_target_context_path(target_path, dst_is_dir);
+    let resolved = resolve_live_target_directory_context_cached(&target_dir, cache);
+    cache
+        .resolved_contexts
+        .insert(target_path.to_path_buf(), resolved.clone());
+    resolved
+}
+
+pub fn apply_best_effort_live_context_with_cache(
     dst: &Path,
     relative: &Path,
     managed_partitions: &[String],
+    cache: &mut LiveContextCache,
 ) -> Result<()> {
     if !should_apply_live_context(relative, managed_partitions) {
         return Ok(());
@@ -280,13 +415,15 @@ pub fn apply_best_effort_live_context(
     } else {
         relative.display().to_string()
     };
-    let dst_is_dir = dst.is_dir();
+    let dst_is_dir = fs::symlink_metadata(dst)
+        .map(|metadata| metadata.file_type().is_dir())
+        .unwrap_or_else(|_| dst.is_dir());
 
-    let Some(target_dir) = resolve_target_directory_with_root(
+    let Some(target_path) = resolve_live_target_path_with_root_cached(
         relative,
-        dst_is_dir,
         managed_partitions,
         Path::new("/"),
+        cache,
     ) else {
         if dst_is_dir {
             crate::scoped_log!(
@@ -300,7 +437,11 @@ pub fn apply_best_effort_live_context(
         return Ok(());
     };
 
-    if let Some((source, context)) = resolve_live_target_directory_context(&target_dir) {
+    let target_dir = resolved_target_directory(&target_path, dst_is_dir);
+
+    if let Some((source, context)) =
+        resolve_live_target_context_cached(&target_path, dst_is_dir, cache)
+    {
         if dst_is_dir {
             crate::scoped_log!(
                 info,
@@ -313,7 +454,17 @@ pub fn apply_best_effort_live_context(
                 context
             );
         }
-        let _ = lsetfilecon(dst, &context);
+        if let Err(err) = lsetfilecon(dst, &context) {
+            crate::scoped_log!(
+                warn,
+                "selinux:context",
+                "apply failed: relative={}, dst={}, live_source={}, error={:#}",
+                relative_display,
+                dst.display(),
+                source.display(),
+                err
+            );
+        }
     } else if dst_is_dir {
         crate::scoped_log!(
             warn,
@@ -336,10 +487,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::{
-        resolve_live_target_path_with_root, resolve_target_directory_with_root,
-        should_apply_live_context,
-    };
+    use super::{resolve_live_target_path_with_root, resolved_target_directory, should_apply_live_context};
 
     #[test]
     fn resolve_live_target_path_follows_system_vendor_symlink() {
@@ -369,34 +517,18 @@ mod tests {
     }
 
     #[test]
-    fn resolve_target_directory_uses_file_parent_for_file_nodes() {
+    fn resolved_target_directory_uses_file_parent_for_file_nodes() {
         let root = tempdir().expect("failed to create temp root");
         let rootfs = root.path().join("rootfs");
         fs::create_dir_all(rootfs.join("vendor/etc/permissions"))
             .expect("failed to create target directory");
 
-        let managed = vec![
-            "system".to_string(),
-            "product".to_string(),
-            "vendor".to_string(),
-        ];
-
-        let file_target_dir = resolve_target_directory_with_root(
-            Path::new("module_a/vendor/etc/permissions/com.test.xml"),
-            false,
-            &managed,
-            &rootfs,
-        )
-        .expect("file target dir should resolve");
+        let file_target_dir =
+            resolved_target_directory(&rootfs.join("vendor/etc/permissions/com.test.xml"), false);
         assert_eq!(file_target_dir, rootfs.join("vendor/etc/permissions"));
 
-        let dir_target_dir = resolve_target_directory_with_root(
-            Path::new("module_a/vendor/etc/permissions"),
-            true,
-            &managed,
-            &rootfs,
-        )
-        .expect("dir target dir should resolve");
+        let dir_target_dir =
+            resolved_target_directory(&rootfs.join("vendor/etc/permissions"), true);
         assert_eq!(dir_target_dir, rootfs.join("vendor/etc/permissions"));
     }
 

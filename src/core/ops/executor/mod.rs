@@ -37,8 +37,10 @@ use crate::{
 
 pub struct ExecutionResult {
     pub overlay_module_ids: Vec<String>,
+    pub overlay_partitions: Vec<String>,
     pub magic_module_ids: Vec<String>,
     pub hymofs_module_ids: Vec<String>,
+    pub hymofs_runtime_enabled: bool,
     pub mount_stats: MountStatistics,
 }
 
@@ -64,6 +66,7 @@ impl Executor {
         );
         let mut final_magic_ids: BTreeSet<String> = plan.magic_module_ids.iter().cloned().collect();
         let mut final_overlay_ids: BTreeSet<String> = BTreeSet::new();
+        let mut final_overlay_partitions: BTreeSet<String> = BTreeSet::new();
         let planned_hymofs_ids = plan.hymofs_module_ids.clone();
         let mut mount_stats = MountStatistics::default();
 
@@ -112,6 +115,7 @@ impl Executor {
                             op.target,
                             ids.len()
                         );
+                        final_overlay_partitions.insert(op.partition_name.clone());
                         final_overlay_ids.extend(ids);
                         mount_stats.record_overlay_mount();
                     }
@@ -203,8 +207,14 @@ impl Executor {
                 "magic apply: modules={}",
                 magic_need_list.join(", ")
             );
-            let (mounted_ids, magic_stats) =
-                magic::mount_magic(&magic_need_list, config, tempdir.as_ref()).map_err(|err| {
+            let (mounted_ids, magic_stats) = magic::mount_magic(
+                modules,
+                &magic_need_list,
+                config,
+                tempdir.as_ref(),
+                hymofs_available,
+            )
+            .map_err(|err| {
                     let failed_module_ids =
                         fallback::resolve_magic_failure_modules(&err, &magic_need_list);
                     ModuleStageFailure::new(
@@ -228,22 +238,22 @@ impl Executor {
             );
         }
 
-        if config.hymofs.enabled {
-            if let Err(err) = hymofs::apply(plan, modules, config) {
-                return Err(ModuleStageFailure::new(
+        let hymofs_runtime_enabled = if config.hymofs.enabled {
+            hymofs::apply(plan, modules, config).map_err(|err| {
+                ModuleStageFailure::new(
                     FailureStage::Execute,
                     final_hymofs_ids.clone(),
                     anyhow::anyhow!("Failed to apply HymoFS late rules: {:#}", err),
                 )
-                .into());
-            }
+            })?
         } else {
             crate::scoped_log!(
                 debug,
                 "executor",
                 "hymofs disabled: skip_runtime_apply=true"
             );
-        }
+            false
+        };
 
         #[cfg(any(target_os = "linux", target_os = "android"))]
         if !config.disable_umount {
@@ -264,8 +274,10 @@ impl Executor {
 
         Ok(ExecutionResult {
             overlay_module_ids: result_overlay,
+            overlay_partitions: final_overlay_partitions.into_iter().collect(),
             magic_module_ids: result_magic,
             hymofs_module_ids: final_hymofs_ids,
+            hymofs_runtime_enabled,
             mount_stats,
         })
     }

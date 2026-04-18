@@ -757,10 +757,6 @@ fn fetch_anon_fd() -> Result<c_int> {
     bail!("HymoFS is only supported on linux/android")
 }
 
-pub fn get_anon_fd() -> Result<c_int> {
-    fetch_anon_fd()
-}
-
 fn ioctl_error_context(name: &str, request: HymoIoctlRequest, err: Errno) -> String {
     let hint = match err.raw_os_error() {
         libc::EINVAL => "invalid payload or protocol mismatch",
@@ -856,10 +852,6 @@ pub fn check_status() -> HymoFsStatus {
     status
 }
 
-pub fn is_available() -> bool {
-    check_status() == HymoFsStatus::Available
-}
-
 pub fn can_operate(ignore_protocol_mismatch: bool) -> bool {
     match check_status() {
         HymoFsStatus::Available => true,
@@ -931,10 +923,6 @@ pub fn get_active_rules() -> Result<String> {
 
 pub fn list_rules_with_capacity(capacity: usize) -> Result<String> {
     list_ioctl(HYMO_IOC_LIST_RULES, capacity, "rule list")
-}
-
-pub fn get_active_rules_with_capacity(capacity: usize) -> Result<String> {
-    list_rules_with_capacity(capacity)
 }
 
 pub fn add_rules_from_directory(target_base: &Path, module_dir: &Path) -> Result<()> {
@@ -1048,11 +1036,6 @@ pub fn set_uname(uname: &HymoSpoofUname) -> Result<()> {
     ensure_kernel_err("HymoFS set_uname", uname.err)
 }
 
-pub fn set_uname_release_version(release: &str, version: &str) -> Result<()> {
-    let uname = HymoSpoofUname::new(release, version)?;
-    set_uname(&uname)
-}
-
 pub fn set_cmdline(cmdline: &HymoSpoofCmdline) -> Result<()> {
     let mut cmdline = *cmdline;
     let fd = unsafe { BorrowedFd::borrow_raw(fetch_anon_fd()?) };
@@ -1144,11 +1127,6 @@ pub fn set_mount_hide(enable: bool) -> Result<()> {
     set_mount_hide_config(&config)
 }
 
-pub fn set_mount_hide_pattern(enable: bool, path_pattern: impl AsRef<Path>) -> Result<()> {
-    let config = HymoMountHideArg::new(enable, Some(path_pattern.as_ref()))?;
-    set_mount_hide_config(&config)
-}
-
 pub fn set_mount_hide_config(config: &HymoMountHideArg) -> Result<()> {
     let mut config = *config;
     ioctl_with_arg("set_mount_hide", HYMO_IOC_SET_MOUNT_HIDE, &mut config)?;
@@ -1168,15 +1146,6 @@ pub fn set_maps_spoof_config(config: &HymoMapsSpoofArg) -> Result<()> {
 
 pub fn set_statfs_spoof(enable: bool) -> Result<()> {
     let config = HymoStatfsSpoofArg::new(enable);
-    set_statfs_spoof_config(&config)
-}
-
-pub fn set_statfs_spoof_custom(
-    enable: bool,
-    path: impl AsRef<Path>,
-    spoof_f_type: c_ulong,
-) -> Result<()> {
-    let config = HymoStatfsSpoofArg::with_path_and_f_type(enable, path, spoof_f_type)?;
     set_statfs_spoof_config(&config)
 }
 

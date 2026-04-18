@@ -14,6 +14,8 @@
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+use std::collections::HashSet;
+
 use const_format::concatcp;
 
 pub const ADB_DIR: &str = "/data/adb";
@@ -97,3 +99,20 @@ pub const IGNORE_UNMOUNT_PARTITIONS: &[&str] = &[
     "/system/lib",
     "/system/lib64",
 ];
+
+pub fn managed_partition_names(extra_partitions: &[String]) -> Vec<String> {
+    let mut names = BUILTIN_PARTITIONS
+        .iter()
+        .map(|partition| partition.to_string())
+        .collect::<Vec<_>>();
+    names.extend(extra_partitions.iter().cloned());
+    names.sort();
+    names.dedup();
+    names
+}
+
+pub fn managed_partition_set(extra_partitions: &[String]) -> HashSet<String> {
+    managed_partition_names(extra_partitions)
+        .into_iter()
+        .collect()
+}

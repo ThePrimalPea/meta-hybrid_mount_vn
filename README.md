@@ -24,6 +24,7 @@ The runtime is designed for predictable boot behavior, conflict visibility, and 
 - [Architecture](#architecture)
 - [Repository Layout](#repository-layout)
 - [Configuration](#configuration)
+- [HymoFS](#hymofs)
 - [Policy Behavior Matrix](#policy-behavior-matrix)
 - [CLI](#cli)
 - [Build](#build)
@@ -104,6 +105,86 @@ default_mode = "magic"
 "system/bin/tool" = "overlay"
 "vendor/lib64/libfoo.so" = "ignore"
 ```
+
+## HymoFS
+
+`HymoFS` is the optional kernel/LKM-backed backend used when Hybrid Mount needs more than plain OverlayFS or bind mounts.
+
+It currently covers two categories of work:
+
+- `mode = "hymofs"` mount mapping for modules or paths that should resolve from the HymoFS mirror tree.
+- Auxiliary runtime features such as stealth/hide-xattr behavior, mount hiding, `/proc/<pid>/maps` spoofing, `statfs` spoofing, UID hiding, uname/cmdline spoofing, and per-file kstat spoof rules.
+
+### When runtime turns on
+
+Setting `hymofs.enabled = true` only makes the backend available. Hybrid Mount actually enables the HymoFS runtime when at least one of these is true:
+
+- the generated mount plan contains at least one HymoFS-managed module/path
+- an auxiliary feature is configured (`enable_hidexattr`, `enable_mount_hide`, `enable_maps_spoof`, `enable_statfs_spoof`, `hide_uids`, `cmdline_value`, `uname*`, `maps_rules`, `kstat_rules`, or persisted user hide rules)
+
+Behavior details that matter in practice:
+
+- `enable_hidexattr` is a compatibility umbrella and effectively turns on `stealth`, `mount_hide`, `maps_spoof`, and `statfs_spoof`
+- `mount_hide.path_pattern` and `statfs_spoof.{path,spoof_f_type}` also count as enabling those features
+- the CLI disable commands now clear those subordinate structured fields so `disable` really disables the feature instead of leaving it implicitly active
+
+### Key config fields
+
+| Key | Purpose |
+| --- | --- |
+| `hymofs.enabled` | Master switch for HymoFS integration. |
+| `hymofs.ignore_protocol_mismatch` | Allow operation even when userspace/kernel protocol versions differ. |
+| `hymofs.lkm_autoload` | Try to auto-load the HymoFS LKM during startup. |
+| `hymofs.lkm_dir` / `hymofs.lkm_kmi_override` | LKM search directory and optional KMI override. |
+| `hymofs.mirror_path` | Runtime mirror root used by HymoFS rules, default `/dev/hymo_mirror`. |
+| `hymofs.enable_kernel_debug` | Toggle kernel-side debug output. |
+| `hymofs.enable_stealth` | Explicit stealth mode toggle. |
+| `hymofs.enable_hidexattr` | Compatibility umbrella for stealth + hide/spoof helpers. |
+| `hymofs.enable_mount_hide` / `hymofs.mount_hide.path_pattern` | Hide mounts globally or with a path pattern. |
+| `hymofs.enable_maps_spoof` / `hymofs.maps_rules` | Enable maps spoofing and install inode/device rewrite rules. |
+| `hymofs.enable_statfs_spoof` / `hymofs.statfs_spoof.*` | Enable generic or path-scoped `statfs` spoofing. |
+| `hymofs.hide_uids` | Hide selected UIDs from HymoFS-aware queries. |
+| `hymofs.uname.*`, `hymofs.uname_release`, `hymofs.uname_version` | Structured + legacy uname spoof fields. |
+| `hymofs.cmdline_value` | Replacement kernel cmdline payload. |
+| `hymofs.kstat_rules` | Per-target stat metadata spoof rules. |
+
+### Example
+
+```toml
+[hymofs]
+enabled = true
+lkm_autoload = true
+mirror_path = "/dev/hymo_mirror"
+enable_mount_hide = true
+
+[rules.my_module]
+default_mode = "hymofs"
+
+[rules.my_module.paths]
+"system/bin/su" = "hymofs"
+```
+
+### Useful commands
+
+```bash
+# runtime/LKM status
+hybrid-mount hymofs status
+hybrid-mount hymofs version
+hybrid-mount hymofs features
+hybrid-mount lkm status
+
+# enable/disable runtime-backed features
+hybrid-mount hymofs enable
+hybrid-mount hymofs disable
+hybrid-mount hymofs mount-hide enable --path-pattern /dev/hymo_mirror
+hybrid-mount hymofs statfs-spoof enable --path /system --f-type 0x794c7630
+hybrid-mount hymofs maps add --target-ino 1 --target-dev 2 --spoofed-ino 3 --spoofed-dev 4 --path /dev/hymo_mirror/system/bin/sh
+hybrid-mount hymofs kstat upsert --target-ino 11 --target-path /system/bin/app_process64 --spoofed-ino 22 --spoofed-dev 33
+```
+
+Operational caveat:
+
+- `hymofs kstat clear-config` only removes persisted config. Existing kernel kstat spoof rules may remain until the HymoFS LKM is reloaded or the whole runtime is rebuilt.
 
 ## Policy Behavior Matrix
 
