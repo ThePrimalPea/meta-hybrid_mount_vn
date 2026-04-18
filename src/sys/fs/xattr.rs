@@ -149,6 +149,10 @@ fn managed_partition_start(relative: &Path, managed_partitions: &[String]) -> Op
     })
 }
 
+fn should_apply_live_context(relative: &Path, managed_partitions: &[String]) -> bool {
+    managed_partition_start(relative, managed_partitions).is_some()
+}
+
 fn resolve_target_path(path: &Path) -> PathBuf {
     let resolved = match fs::read_link(path) {
         Ok(link_target) => {
@@ -254,6 +258,10 @@ pub fn apply_best_effort_live_context(
     relative: &Path,
     managed_partitions: &[String],
 ) -> Result<()> {
+    if !should_apply_live_context(relative, managed_partitions) {
+        return Ok(());
+    }
+
     let relative_display = if relative.as_os_str().is_empty() {
         "/".to_string()
     } else {
@@ -315,7 +323,10 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::{resolve_live_target_path_with_root, resolve_target_directory_with_root};
+    use super::{
+        resolve_live_target_path_with_root, resolve_target_directory_with_root,
+        should_apply_live_context,
+    };
 
     #[test]
     fn resolve_live_target_path_follows_system_vendor_symlink() {
@@ -374,5 +385,29 @@ mod tests {
         )
         .expect("dir target dir should resolve");
         assert_eq!(dir_target_dir, rootfs.join("vendor/etc/permissions"));
+    }
+
+    #[test]
+    fn live_context_only_applies_to_managed_partition_paths() {
+        let managed = vec![
+            "system".to_string(),
+            "product".to_string(),
+            "vendor".to_string(),
+        ];
+
+        assert!(should_apply_live_context(
+            Path::new("system/app/AnalyticsCore"),
+            &managed
+        ));
+        assert!(should_apply_live_context(
+            Path::new("module_a/vendor/etc/permissions/com.test.xml"),
+            &managed
+        ));
+        assert!(!should_apply_live_context(Path::new("Host"), &managed));
+        assert!(!should_apply_live_context(
+            Path::new("mod/ads_monitor"),
+            &managed
+        ));
+        assert!(!should_apply_live_context(Path::new("tools"), &managed));
     }
 }
