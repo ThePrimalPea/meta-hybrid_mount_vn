@@ -518,7 +518,9 @@ pub fn apply_best_effort_live_context_with_cache(
         if (context.contains("same_process_hal_file")
             | context.contains("vendor_file")
             | context.contains("lib_file"))
-            && dst.ends_with("so")
+            && (target_path.ends_with("so")
+                | target_path.to_string_lossy().contains("vendor")
+                | target_path.to_string_lossy().contains("lib"))
         {
             return LiveContextApplyOutcome::MissingSet {
                 reason: format!(
