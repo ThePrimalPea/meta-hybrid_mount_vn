@@ -7,10 +7,11 @@
 ![License](https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square)
 
 Hybrid Mount is a mount orchestration metamodule for **KernelSU** and **APatch**.  
-It merges module files into Android partitions with a hybrid strategy:
+It merges module files into Android partitions with three mount modes:
 
-- **OverlayFS** when kernel/filesystem support is stable.
-- **Magic Mount (bind mount)** as fallback or per-path override.
+- **OverlayFS** for compatibility-first layered mounts.
+- **Magic Mount (bind mount)** for direct path binding or fallback.
+- **HymoFS** for explicit HymoFS routing and runtime-backed hide/spoof features.
 
 The runtime is designed for predictable boot behavior, conflict visibility, and policy-level control.
 
@@ -21,6 +22,7 @@ The runtime is designed for predictable boot behavior, conflict visibility, and 
 ## Table of Contents
 
 - [Design Goals](#design-goals)
+- [Mount Modes](#mount-modes)
 - [Architecture](#architecture)
 - [Repository Layout](#repository-layout)
 - [Configuration](#configuration)
@@ -40,13 +42,21 @@ The runtime is designed for predictable boot behavior, conflict visibility, and 
 3. **Operational safety** with recovery-friendly defaults.
 4. **Automation-friendly CLI** for WebUI or external controllers.
 
+## Mount Modes
+
+Hybrid Mount currently supports three backend strategies:
+
+- `overlay`: use OverlayFS for module paths that can be merged safely.
+- `magic`: use Magic Mount bind mounts for direct per-path replacement or fallback.
+- `hymofs`: route module paths through the HymoFS mirror/runtime when the module or path explicitly requires it.
+
 ## Architecture
 
 At startup, `hybrid-mount` follows this pipeline:
 
 1. Load config (file + CLI override).
 2. Scan module tree and inventory mountable entries.
-3. Generate an execution plan (overlay/magic/ignore).
+3. Generate an execution plan (overlay/magic/hymofs/ignore).
 4. Apply mounts and persist runtime state.
 5. Emit diagnostics/conflict reports when requested.
 
@@ -55,7 +65,7 @@ Key implementation modules:
 - `src/conf`: config schema, loader, CLI handlers.
 - `src/core/inventory`: module scanning and inventory modeling.
 - `src/core/ops`: planning, execution, synchronization.
-- `src/mount`: overlayfs + magic-mount backends.
+- `src/mount`: OverlayFS, Magic Mount, and HymoFS backends.
 - `src/sys`: filesystem/mount helpers and low-level integration.
 
 ## Repository Layout
@@ -64,7 +74,6 @@ Key implementation modules:
 .
 ├─ src/                 # daemon/runtime implementation
 ├─ module/              # module scripts and packaging assets
-├─ nuke-kpm/            # optional checkout of the APatch KPM source repo
 ├─ xtask/               # build/release automation commands
 ├─ Cargo.toml           # workspace + runtime crate settings
 └─ README*.md           # user and developer docs
@@ -84,7 +93,7 @@ Default path: `/data/adb/hybrid-mount/config.toml`.
 | `overlay_mode` | `ext4` \| `tmpfs` | `ext4` | Overlay upper/work backing mode. |
 | `disable_umount` | bool | `false` | Skip umount operations (debug-only). |
 | `enable_overlay_fallback` | bool | `false` | When overlayfs is unavailable, allow falling back to Magic Mount for planned overlay modules. |
-| `default_mode` | `overlay` \| `magic` | `overlay` | Default policy for module paths. |
+| `default_mode` | `overlay` \| `magic` \| `hymofs` | `overlay` | Default policy for module paths. |
 | `rules` | map | `{}` | Per-module path-level mount policy. |
 
 ### Example
@@ -108,7 +117,7 @@ default_mode = "magic"
 
 ## HymoFS
 
-`HymoFS` is the optional kernel/LKM-backed backend used when Hybrid Mount needs more than plain OverlayFS or bind mounts.
+`HymoFS` is the third mount backend in Hybrid Mount. It is kernel/LKM-backed and is used when a module/path is explicitly routed to `hymofs`, or when HymoFS-only runtime features are required.
 
 It currently covers two categories of work:
 
@@ -190,13 +199,15 @@ Operational caveat:
 
 This matrix clarifies what happens under each policy and runtime condition:
 
-| Rule result | OverlayFS available | `enable_overlay_fallback` | Effective behavior |
+| Rule result | Backend availability | `enable_overlay_fallback` | Effective behavior |
 | --- | --- | --- | --- |
-| `overlay` | yes | any | Mount with OverlayFS. |
-| `overlay` | no | `false` | Skip mount and report as failed planning/execution item. |
-| `overlay` | no | `true` | Retry as Magic Mount (bind mount). |
-| `magic` | yes/no | any | Mount with Magic Mount directly. |
-| `ignore` | yes/no | any | Do not mount this path. |
+| `overlay` | OverlayFS available | any | Mount with OverlayFS. |
+| `overlay` | OverlayFS unavailable | `false` | Skip mount and report as failed planning/execution item. |
+| `overlay` | OverlayFS unavailable | `true` | Retry as Magic Mount (bind mount). |
+| `magic` | n/a | any | Mount with Magic Mount directly. |
+| `hymofs` | HymoFS available | any | Mount with HymoFS directly. |
+| `hymofs` | HymoFS unavailable or disabled | any | Skip HymoFS mapping for this path/module. |
+| `ignore` | n/a | any | Do not mount this path. |
 
 ### Rule precedence
 

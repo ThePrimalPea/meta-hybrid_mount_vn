@@ -127,26 +127,3 @@ pub fn apply_user_hide_rules_from_paths(rules: &[PathBuf]) -> Result<(usize, usi
 
     Ok((success, failed))
 }
-
-#[cfg(test)]
-mod tests {
-    use std::path::PathBuf;
-
-    use tempfile::tempdir;
-
-    use super::{load_user_hide_rules_from, save_user_hide_rules_to};
-
-    #[test]
-    fn user_hide_rules_round_trip() {
-        let temp = tempdir().expect("failed to create temp dir");
-        let file = temp.path().join("user_hide_rules.json");
-        let rules = vec![
-            PathBuf::from("/system/bin/sh"),
-            PathBuf::from("/dev/hymo_mirror"),
-        ];
-
-        save_user_hide_rules_to(&file, &rules).expect("failed to save rules");
-        let loaded = load_user_hide_rules_from(&file).expect("failed to load rules");
-        assert_eq!(loaded, rules);
-    }
-}

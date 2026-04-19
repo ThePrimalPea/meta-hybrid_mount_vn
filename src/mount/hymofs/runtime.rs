@@ -38,11 +38,11 @@ use crate::{
     },
 };
 
-pub(super) fn mount_mapping_requested(plan: &MountPlan) -> bool {
+fn mount_mapping_requested(plan: &MountPlan) -> bool {
     !plan.hymofs_module_ids.is_empty()
 }
 
-pub(super) fn auxiliary_features_requested(config: &config::Config) -> bool {
+fn auxiliary_features_requested(config: &config::Config) -> bool {
     config.hymofs.enable_kernel_debug
         || effective_stealth_enabled(config)
         || effective_mount_hide_enabled(config)
@@ -55,7 +55,7 @@ pub(super) fn auxiliary_features_requested(config: &config::Config) -> bool {
         || user_hide_rules::user_hide_rule_count() > 0
 }
 
-pub(super) fn hymofs_runtime_requested(plan: &MountPlan, config: &config::Config) -> bool {
+fn hymofs_runtime_requested(plan: &MountPlan, config: &config::Config) -> bool {
     config.hymofs.enabled && (mount_mapping_requested(plan) || auxiliary_features_requested(config))
 }
 

@@ -7,10 +7,11 @@
 ![License](https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square)
 
 Hybrid Mount 是面向 **KernelSU** 与 **APatch** 的挂载编排元模块。  
-它使用混合策略把模块文件注入 Android 分区：
+它现在支持三种挂载方式，把模块文件注入 Android 分区：
 
-- 内核/文件系统条件允许时优先使用 **OverlayFS**。
-- 不满足条件或按规则指定时回退到 **Magic Mount（bind mount）**。
+- **OverlayFS**：兼容优先的分层挂载。
+- **Magic Mount（bind mount）**：直接路径绑定或回退方案。
+- **HymoFS**：用于显式 `hymofs` 路由，以及依赖 HymoFS runtime 的 hide/spoof 能力。
 
 整体目标是：启动行为可预测、冲突可观测、策略可配置。
 
@@ -21,6 +22,7 @@ Hybrid Mount 是面向 **KernelSU** 与 **APatch** 的挂载编排元模块。
 ## 目录
 
 - [设计目标](#设计目标)
+- [挂载方式](#挂载方式)
 - [架构说明](#架构说明)
 - [仓库结构](#仓库结构)
 - [配置说明](#配置说明)
@@ -40,13 +42,21 @@ Hybrid Mount 是面向 **KernelSU** 与 **APatch** 的挂载编排元模块。
 3. **运行安全性**：配置和恢复流程尽可能保守。
 4. **自动化友好**：CLI 输出可直接给 WebUI/脚本消费。
 
+## 挂载方式
+
+Hybrid Mount 当前支持三种后端策略：
+
+- `overlay`：适合可安全合并的模块路径，走 OverlayFS。
+- `magic`：适合直接替换或回退场景，走 Magic Mount bind mount。
+- `hymofs`：模块或路径显式指定为 `hymofs` 时，交给 HymoFS mirror/runtime 处理。
+
 ## 架构说明
 
 `hybrid-mount` 启动后主要流程如下：
 
 1. 加载配置（文件 + CLI 覆盖）。
 2. 扫描模块目录并构建清单。
-3. 生成执行计划（overlay/magic/ignore）。
+3. 生成执行计划（overlay/magic/hymofs/ignore）。
 4. 执行挂载并记录运行状态。
 5. 按需输出冲突与诊断报告。
 
@@ -55,7 +65,7 @@ Hybrid Mount 是面向 **KernelSU** 与 **APatch** 的挂载编排元模块。
 - `src/conf`：配置模型、加载器、CLI 处理。
 - `src/core/inventory`：模块扫描与数据建模。
 - `src/core/ops`：计划生成、执行与同步。
-- `src/mount`：overlayfs 与 magic mount 后端。
+- `src/mount`：OverlayFS、Magic Mount 与 HymoFS 后端。
 - `src/sys`：底层文件系统与挂载接口。
 
 ## 仓库结构
@@ -64,7 +74,6 @@ Hybrid Mount 是面向 **KernelSU** 与 **APatch** 的挂载编排元模块。
 .
 ├─ src/                 # 守护进程与运行时逻辑
 ├─ module/              # 模块脚本与打包资源
-├─ nuke-kpm/            # 可选：额外检出的 APatch KPM 源码仓库
 ├─ xtask/               # 构建/发布自动化入口
 ├─ Cargo.toml           # workspace 与主 crate 配置
 └─ README*.md           # 中英文文档
@@ -84,7 +93,7 @@ Hybrid Mount 是面向 **KernelSU** 与 **APatch** 的挂载编排元模块。
 | `overlay_mode` | `ext4` \| `tmpfs` | `ext4` | Overlay 上层存储模式。 |
 | `disable_umount` | bool | `false` | 跳过 umount（仅调试建议使用）。 |
 | `enable_overlay_fallback` | bool | `false` | 当 overlayfs 不可用时，允许将 overlay 计划模块回退到 Magic Mount。 |
-| `default_mode` | `overlay` \| `magic` | `overlay` | 全局默认策略。 |
+| `default_mode` | `overlay` \| `magic` \| `hymofs` | `overlay` | 全局默认策略。 |
 | `rules` | map | `{}` | 按模块 + 路径细粒度策略。 |
 
 ### 示例
@@ -108,7 +117,7 @@ default_mode = "magic"
 
 ## HymoFS
 
-`HymoFS` 是一个可选的内核/LKM 后端，用于处理单靠 OverlayFS 或 bind mount 不够表达的运行时能力。
+`HymoFS` 是 Hybrid Mount 的第三种挂载后端。它由内核/LKM 提供支持，既可用于显式的 `hymofs` 路由，也承担 HymoFS 专属的运行时 hide/spoof 能力。
 
 它在项目里主要承担两类工作：
 
@@ -190,13 +199,15 @@ hybrid-mount hymofs kstat upsert --target-ino 11 --target-path /system/bin/app_p
 
 下表用于说明不同策略在不同运行条件下的实际行为：
 
-| 规则结果 | OverlayFS 可用 | `enable_overlay_fallback` | 最终行为 |
+| 规则结果 | 后端可用性 | `enable_overlay_fallback` | 最终行为 |
 | --- | --- | --- | --- |
-| `overlay` | 是 | 任意 | 使用 OverlayFS 挂载。 |
-| `overlay` | 否 | `false` | 跳过挂载，并在计划/执行结果中标记失败项。 |
-| `overlay` | 否 | `true` | 回退为 Magic Mount（bind mount）重试。 |
-| `magic` | 是/否 | 任意 | 直接使用 Magic Mount。 |
-| `ignore` | 是/否 | 任意 | 不挂载该路径。 |
+| `overlay` | OverlayFS 可用 | 任意 | 使用 OverlayFS 挂载。 |
+| `overlay` | OverlayFS 不可用 | `false` | 跳过挂载，并在计划/执行结果中标记失败项。 |
+| `overlay` | OverlayFS 不可用 | `true` | 回退为 Magic Mount（bind mount）重试。 |
+| `magic` | 不适用 | 任意 | 直接使用 Magic Mount。 |
+| `hymofs` | HymoFS 可用 | 任意 | 直接使用 HymoFS 挂载。 |
+| `hymofs` | HymoFS 不可用或未启用 | 任意 | 跳过该路径/模块的 HymoFS 映射。 |
+| `ignore` | 不适用 | 任意 | 不挂载该路径。 |
 
 ### 规则优先级
 

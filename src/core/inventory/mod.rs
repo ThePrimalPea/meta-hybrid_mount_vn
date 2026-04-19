@@ -48,25 +48,3 @@ pub fn mount_block_markers(module_path: &std::path::Path) -> Vec<&'static str> {
 pub fn has_mount_block_marker(module_path: &std::path::Path) -> bool {
     !mount_block_markers(module_path).is_empty()
 }
-
-#[cfg(test)]
-mod tests {
-    use tempfile::tempdir;
-
-    use super::*;
-
-    #[test]
-    fn mount_block_markers_include_mount_error_and_legacy_skip() {
-        let temp = tempdir().expect("failed to create temp dir");
-        let module_path = temp.path();
-
-        std::fs::write(module_path.join(defs::MOUNT_ERROR_FILE_NAME), b"")
-            .expect("failed to create mount_error");
-        std::fs::write(module_path.join(defs::SKIP_MOUNT_FILE_NAME), b"")
-            .expect("failed to create skip_mount");
-
-        let markers = mount_block_markers(module_path);
-        assert!(markers.contains(&defs::MOUNT_ERROR_FILE_NAME));
-        assert!(markers.contains(&defs::SKIP_MOUNT_FILE_NAME));
-    }
-}

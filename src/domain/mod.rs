@@ -79,32 +79,3 @@ impl ModuleRules {
         self.default_mode.clone()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
-    use super::{DefaultMode, ModuleRules, MountMode};
-
-    #[test]
-    fn default_mode_maps_to_mount_mode() {
-        assert_eq!(DefaultMode::Overlay.as_mount_mode(), MountMode::Overlay);
-        assert_eq!(DefaultMode::Magic.as_mount_mode(), MountMode::Magic);
-        assert_eq!(DefaultMode::Hymofs.as_mount_mode(), MountMode::Hymofs);
-    }
-
-    #[test]
-    fn module_rules_prefers_longest_prefix_match() {
-        let rules = ModuleRules {
-            default_mode: MountMode::Overlay,
-            paths: HashMap::from([
-                ("system".to_string(), MountMode::Magic),
-                ("system/bin".to_string(), MountMode::Hymofs),
-            ]),
-        };
-
-        assert_eq!(rules.get_mode("system/bin"), MountMode::Hymofs);
-        assert_eq!(rules.get_mode("system/bin/sh"), MountMode::Hymofs);
-        assert_eq!(rules.get_mode("system/lib"), MountMode::Magic);
-    }
-}

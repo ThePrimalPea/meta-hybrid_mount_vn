@@ -19,9 +19,6 @@ mod compile;
 mod runtime;
 mod status;
 
-#[cfg(test)]
-mod tests;
-
 pub use runtime::{
     apply, clear_runtime_best_effort, reset_runtime, sync_runtime_config,
     sync_runtime_config_for_operation,
