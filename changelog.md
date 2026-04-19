@@ -1,4 +1,14 @@
 
+## v3.5.1
+
+
+### <!-- 1 --> Features
+
+- Implement SELinux context and ownership cloning for file operations
+
+
+
+
 ## v3.5.0
 
 
