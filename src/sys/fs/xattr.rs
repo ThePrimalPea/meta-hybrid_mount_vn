@@ -69,30 +69,30 @@ pub enum LiveContextApplyOutcome {
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn copy_extended_attributes(src: &Path, dst: &Path) -> Result<()> {
-    if let Ok(ctx) = lgetfilecon(src) {
-        if let Err(err) = lsetfilecon(dst, &ctx) {
-            crate::scoped_log!(
-                debug,
-                "selinux:context",
-                "copy context skipped: src={}, dst={}, error={:#}",
-                src.display(),
-                dst.display(),
-                err
-            );
-        }
+    if let Ok(ctx) = lgetfilecon(src)
+        && let Err(err) = lsetfilecon(dst, &ctx)
+    {
+        crate::scoped_log!(
+            debug,
+            "selinux:context",
+            "copy context skipped: src={}, dst={}, error={:#}",
+            src.display(),
+            dst.display(),
+            err
+        );
     }
 
-    if let Ok(opaque) = lgetxattr(src, OVERLAY_OPAQUE_XATTR) {
-        if let Err(err) = lsetxattr(dst, OVERLAY_OPAQUE_XATTR, &opaque, XattrFlags::empty()) {
-            crate::scoped_log!(
-                debug,
-                "xattr",
-                "copy opaque xattr skipped: src={}, dst={}, error={}",
-                src.display(),
-                dst.display(),
-                err
-            );
-        }
+    if let Ok(opaque) = lgetxattr(src, OVERLAY_OPAQUE_XATTR)
+        && let Err(err) = lsetxattr(dst, OVERLAY_OPAQUE_XATTR, &opaque, XattrFlags::empty())
+    {
+        crate::scoped_log!(
+            debug,
+            "xattr",
+            "copy opaque xattr skipped: src={}, dst={}, error={}",
+            src.display(),
+            dst.display(),
+            err
+        );
     }
     if let Ok(xattrs) = llistxattr(src) {
         for xattr_name in xattrs {
@@ -102,18 +102,17 @@ fn copy_extended_attributes(src: &Path, dst: &Path) -> Result<()> {
             if name_str.starts_with("trusted.overlay.")
                 && name_str != OVERLAY_OPAQUE_XATTR
                 && let Ok(val) = lgetxattr(src, &xattr_name)
+                && let Err(err) = lsetxattr(dst, &xattr_name, &val, XattrFlags::empty())
             {
-                if let Err(err) = lsetxattr(dst, &xattr_name, &val, XattrFlags::empty()) {
-                    crate::scoped_log!(
-                        debug,
-                        "xattr",
-                        "copy overlay xattr skipped: name={}, src={}, dst={}, error={}",
-                        name_str,
-                        src.display(),
-                        dst.display(),
-                        err
-                    );
-                }
+                crate::scoped_log!(
+                    debug,
+                    "xattr",
+                    "copy overlay xattr skipped: name={}, src={}, dst={}, error={}",
+                    name_str,
+                    src.display(),
+                    dst.display(),
+                    err
+                );
             }
         }
     }
