@@ -248,8 +248,7 @@ fn resolve_module_file(config: &HymoFsConfig) -> Option<PathBuf> {
         }
     }
 
-    let legacy = PathBuf::from(defs::HYMOFS_LKM_FILE);
-    legacy.is_file().then_some(legacy)
+    None
 }
 
 fn loaded_module_name() -> Option<String> {
@@ -265,7 +264,7 @@ pub fn is_loaded() -> bool {
 }
 
 pub fn has_module_assets(config: &HymoFsConfig) -> bool {
-    config.lkm_dir.exists() || Path::new(defs::HYMOFS_LKM_FILE).exists()
+    config.lkm_dir.exists()
 }
 
 pub fn status(config: &HymoFsConfig) -> LkmStatus {
@@ -439,10 +438,9 @@ pub fn load(config: &HymoFsConfig) -> Result<()> {
 
     let ko_path = resolve_module_file(config).ok_or_else(|| {
         anyhow!(
-            "no matching HymoFS LKM found in {} for kmi '{}' (legacy fallback: {})",
+            "no matching HymoFS LKM found in {} for kmi '{}'",
             config.lkm_dir.display(),
-            effective_kmi(config),
-            defs::HYMOFS_LKM_FILE
+            effective_kmi(config)
         )
     })?;
 

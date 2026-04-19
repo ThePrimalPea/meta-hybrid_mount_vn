@@ -42,7 +42,7 @@ pub struct HymoMapsRuleConfig {
     pub spoofed_ino: u64,
     #[serde(default)]
     pub spoofed_dev: u64,
-    #[serde(default, alias = "path")]
+    #[serde(default)]
     pub spoofed_pathname: PathBuf,
 }
 
@@ -50,7 +50,7 @@ pub struct HymoMapsRuleConfig {
 pub struct HymoKstatRuleConfig {
     #[serde(default)]
     pub target_ino: u64,
-    #[serde(default, alias = "target_path", alias = "path")]
+    #[serde(default)]
     pub target_pathname: PathBuf,
     #[serde(default)]
     pub spoofed_ino: u64,
@@ -132,7 +132,7 @@ pub struct HymoFsConfig {
     pub enable_kernel_debug: bool,
     #[serde(default)]
     pub enable_stealth: bool,
-    #[serde(default, alias = "hidexattr")]
+    #[serde(default)]
     pub enable_hidexattr: bool,
     #[serde(default)]
     pub enable_mount_hide: bool,
@@ -149,10 +149,6 @@ pub struct HymoFsConfig {
     #[serde(default)]
     pub uname: HymoUnameConfig,
     #[serde(default)]
-    pub uname_release: String,
-    #[serde(default)]
-    pub uname_version: String,
-    #[serde(default, alias = "cmdline")]
     pub cmdline_value: String,
     #[serde(default)]
     pub kstat_rules: Vec<HymoKstatRuleConfig>,
@@ -179,8 +175,6 @@ impl Default for HymoFsConfig {
             statfs_spoof: HymoStatfsSpoofConfig::default(),
             hide_uids: Vec::new(),
             uname: HymoUnameConfig::default(),
-            uname_release: String::new(),
-            uname_version: String::new(),
             cmdline_value: String::new(),
             kstat_rules: Vec::new(),
             maps_rules: Vec::new(),

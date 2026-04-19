@@ -149,11 +149,7 @@ impl MountController<StorageReady> {
         hymofs
             .prepare_mirror_storage(&self.backend_capabilities, &modules)
             .map_err(|err| {
-                let module_ids = hymofs
-                    .hymofs_modules(&modules)
-                    .into_iter()
-                    .map(|module| module.id.clone())
-                    .collect();
+                let module_ids = HymofsCoordinator::requested_module_ids(&modules);
                 ModuleStageFailure::new(
                     FailureStage::Sync,
                     module_ids,

@@ -14,32 +14,11 @@
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-use std::{
-    fs,
-    io::ErrorKind,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::Path};
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
 
-use crate::{
-    conf::schema::{Config, HymoFsConfig},
-    defs,
-};
-
-#[derive(Debug, Deserialize, Default)]
-struct LegacyWrappedHymofsConfig {
-    #[serde(default)]
-    hymofs: HymoFsConfig,
-}
-
-fn hymofs_sidecar_path_for(main_path: &Path) -> PathBuf {
-    main_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join("hymofs.toml")
-}
+use crate::{conf::schema::Config, defs};
 
 fn ensure_parent_dir(path: &Path) -> Result<()> {
     if let Some(parent) = path.parent() {
@@ -48,29 +27,8 @@ fn ensure_parent_dir(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn load_hymofs_config_file(path: &Path) -> Result<HymoFsConfig> {
-    let content = fs::read_to_string(path)
-        .with_context(|| format!("failed to read HymoFS config file {}", path.display()))?;
-
-    if content.trim().is_empty() {
-        return Ok(HymoFsConfig::default());
-    }
-
-    let value: toml::Value = toml::from_str(&content)
-        .with_context(|| format!("failed to parse HymoFS config file {}", path.display()))?;
-
-    if value.get("hymofs").is_some() {
-        toml::from_str::<LegacyWrappedHymofsConfig>(&content)
-            .map(|wrapped| wrapped.hymofs)
-            .with_context(|| format!("failed to parse wrapped HymoFS config {}", path.display()))
-    } else {
-        toml::from_str::<HymoFsConfig>(&content)
-            .with_context(|| format!("failed to parse HymoFS config file {}", path.display()))
-    }
-}
-
 fn load_merged_config(main_path: &Path, allow_missing_main: bool) -> Result<Config> {
-    let mut config = if main_path.exists() {
+    Ok(if main_path.exists() {
         let content = fs::read_to_string(main_path)
             .with_context(|| format!("failed to read config file {}", main_path.display()))?;
         toml::from_str::<Config>(&content)
@@ -81,28 +39,7 @@ fn load_merged_config(main_path: &Path, allow_missing_main: bool) -> Result<Conf
         let _ = fs::read_to_string(main_path)
             .with_context(|| format!("failed to read config file {}", main_path.display()))?;
         unreachable!("read_to_string should have returned an error for missing config file");
-    };
-
-    let hymofs_path = hymofs_sidecar_path_for(main_path);
-    if hymofs_path.exists() {
-        config.hymofs = HymoFsConfig::from_file(&hymofs_path)?;
-    }
-
-    Ok(config)
-}
-
-fn remove_legacy_sidecar_if_present(main_path: &Path) -> Result<()> {
-    let hymofs_path = hymofs_sidecar_path_for(main_path);
-    match fs::remove_file(&hymofs_path) {
-        Ok(()) => Ok(()),
-        Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
-        Err(err) => Err(err).with_context(|| {
-            format!(
-                "failed to remove legacy HymoFS config {}",
-                hymofs_path.display()
-            )
-        }),
-    }
+    })
 }
 
 impl Config {
@@ -121,13 +58,6 @@ impl Config {
         ensure_parent_dir(main_path)?;
         fs::write(main_path, content)
             .with_context(|| format!("failed to write config file {}", main_path.display()))?;
-        remove_legacy_sidecar_if_present(main_path)?;
         Ok(())
-    }
-}
-
-impl HymoFsConfig {
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        load_hymofs_config_file(path.as_ref())
     }
 }

@@ -56,8 +56,6 @@ pub(super) fn has_uname_spoof_config(config: &config::Config) -> bool {
         || !config.hymofs.uname.version.is_empty()
         || !config.hymofs.uname.machine.is_empty()
         || !config.hymofs.uname.domainname.is_empty()
-        || !config.hymofs.uname_release.is_empty()
-        || !config.hymofs.uname_version.is_empty()
 }
 
 pub(super) fn feature_supported(features: Option<i32>, required_feature: i32) -> bool {

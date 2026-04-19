@@ -358,12 +358,6 @@ pub fn apply_uname_from_config(config: &config::Config) -> Result<()> {
     if !config.hymofs.uname.domainname.is_empty() {
         uname.set_domainname(&config.hymofs.uname.domainname)?;
     }
-    if !config.hymofs.uname_release.is_empty() {
-        uname.set_release(&config.hymofs.uname_release)?;
-    }
-    if !config.hymofs.uname_version.is_empty() {
-        uname.set_version(&config.hymofs.uname_version)?;
-    }
     hymofs::set_uname(&uname)
 }
 

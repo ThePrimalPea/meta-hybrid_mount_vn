@@ -34,13 +34,11 @@ pub const USER_HIDE_RULES_FILE: &str = concatcp!(HYBRID_MOUNT_DIR, "/user_hide_r
 pub const MODULE_PROP_FILE: &str = concatcp!(HYBRID_MOUNT_MODULE_DIR, "/module.prop");
 pub const HYMOFS_MIRROR_DIR: &str = "/dev/hymo_mirror";
 pub const HYMOFS_LKM_DIR: &str = concatcp!(HYBRID_MOUNT_MODULE_DIR, "/hymofs_lkm");
-pub const HYMOFS_LKM_FILE: &str = concatcp!(HYBRID_MOUNT_MODULE_DIR, "/hymofs_lkm.ko");
 pub const HYMOFS_LKM_MODULE_NAME: &str = "hymofs_lkm";
 
 pub const DISABLE_FILE_NAME: &str = "disable";
 pub const REMOVE_FILE_NAME: &str = "remove";
 pub const MOUNT_ERROR_FILE_NAME: &str = "mount_error";
-// Legacy marker kept for backward compatibility with existing installations.
 pub const SKIP_MOUNT_FILE_NAME: &str = "skip_mount";
 pub const REPLACE_DIR_FILE_NAME: &str = ".replace";
 #[cfg(any(target_os = "linux", target_os = "android"))]

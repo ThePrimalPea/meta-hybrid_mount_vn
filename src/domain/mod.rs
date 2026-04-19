@@ -47,6 +47,26 @@ pub enum MountMode {
     Ignore,
 }
 
+impl MountMode {
+    pub fn as_strategy(&self) -> &'static str {
+        match self {
+            Self::Overlay => "overlay",
+            Self::Magic => "magic",
+            Self::Hymofs => "hymofs",
+            Self::Ignore => "ignore",
+        }
+    }
+
+    pub fn as_module_mode_label(&self) -> &'static str {
+        match self {
+            Self::Overlay => "auto",
+            Self::Magic => "magic",
+            Self::Hymofs => "hymofs",
+            Self::Ignore => "ignore",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModuleRules {
     #[serde(default)]

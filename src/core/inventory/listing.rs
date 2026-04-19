@@ -27,11 +27,7 @@ use regex_lite::Regex;
 use serde::Serialize;
 
 use super::discovery;
-use crate::{
-    conf::config,
-    core::runtime_state::RuntimeState,
-    domain::{ModuleRules, MountMode},
-};
+use crate::{conf::config, core::runtime_state::RuntimeState, domain::ModuleRules};
 
 static MODULE_PROP_REGEX: OnceLock<Regex> = OnceLock::new();
 
@@ -108,19 +104,6 @@ impl ModuleInfo {
             ModuleProp::from(module.source_path.join("module.prop").as_path()),
         );
 
-        let mode_str = match module.rules.default_mode {
-            MountMode::Overlay => "auto",
-            MountMode::Magic => "magic",
-            MountMode::Hymofs => "hymofs",
-            MountMode::Ignore => "ignore",
-        };
-        let strategy = match module.rules.default_mode {
-            MountMode::Overlay => "overlay",
-            MountMode::Magic => "magic",
-            MountMode::Hymofs => "hymofs",
-            MountMode::Ignore => "ignore",
-        };
-
         Self {
             is_mounted: mounted_set.contains(module.id.as_str()),
             id: module.id,
@@ -128,8 +111,8 @@ impl ModuleInfo {
             version: prop.version,
             author: prop.author,
             description: prop.description,
-            mode: mode_str.to_string(),
-            strategy: strategy.to_string(),
+            mode: module.rules.default_mode.as_module_mode_label().to_string(),
+            strategy: module.rules.default_mode.as_strategy().to_string(),
             path: module.source_path.display().to_string(),
             enabled: true,
             rules: module.rules,

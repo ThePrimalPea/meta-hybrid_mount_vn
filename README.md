@@ -153,7 +153,7 @@ Behavior details that matter in practice:
 | `hymofs.enable_maps_spoof` / `hymofs.maps_rules` | Enable maps spoofing and install inode/device rewrite rules. |
 | `hymofs.enable_statfs_spoof` / `hymofs.statfs_spoof.*` | Enable generic or path-scoped `statfs` spoofing. |
 | `hymofs.hide_uids` | Hide selected UIDs from HymoFS-aware queries. |
-| `hymofs.uname.*`, `hymofs.uname_release`, `hymofs.uname_version` | Structured + legacy uname spoof fields. |
+| `hymofs.uname.*` | Structured uname spoof fields. |
 | `hymofs.cmdline_value` | Replacement kernel cmdline payload. |
 | `hymofs.kstat_rules` | Per-target stat metadata spoof rules. |
 

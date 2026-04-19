@@ -14,14 +14,16 @@
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+mod walk;
+
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
-    fs,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
 use anyhow::Result;
 
+use self::walk::{PlannerContext, plan_module_roots};
 use crate::{
     conf::config,
     core::{
@@ -34,28 +36,6 @@ use crate::{
     domain::MountMode,
     utils,
 };
-
-struct ProcessingItem {
-    module_source: PathBuf,
-    system_target: PathBuf,
-    relative_path: PathBuf,
-    partition_label: String,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-struct BackendPresence {
-    magic: bool,
-    hymofs: bool,
-}
-
-fn mode_name(mode: &MountMode) -> &'static str {
-    match mode {
-        MountMode::Overlay => "overlay",
-        MountMode::Magic => "magic",
-        MountMode::Hymofs => "hymofs",
-        MountMode::Ignore => "ignore",
-    }
-}
 
 fn effective_mount_mode(requested: &MountMode, use_hymofs: bool) -> MountMode {
     if matches!(requested, MountMode::Hymofs) && !use_hymofs {
@@ -79,63 +59,6 @@ fn module_content_path(storage_root: &Path, module: &Module) -> Option<PathBuf> 
     content_path.exists().then_some(content_path)
 }
 
-fn resolve_target(system_target: &Path) -> PathBuf {
-    let resolved_target = match fs::read_link(system_target) {
-        Ok(target) => {
-            if target.is_absolute() {
-                target
-            } else {
-                system_target
-                    .parent()
-                    .unwrap_or(Path::new("/"))
-                    .join(target)
-            }
-        }
-        Err(_) => system_target.to_path_buf(),
-    };
-
-    normalize_path(&resolved_target)
-}
-
-fn normalize_path(path: &Path) -> PathBuf {
-    let mut normalized = PathBuf::new();
-    let mut saw_root = false;
-
-    for component in path.components() {
-        match component {
-            std::path::Component::RootDir => {
-                normalized.push(Path::new("/"));
-                saw_root = true;
-            }
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                let _ = normalized.pop();
-                if saw_root && normalized.as_os_str().is_empty() {
-                    normalized.push(Path::new("/"));
-                }
-            }
-            std::path::Component::Normal(value) => normalized.push(value),
-            std::path::Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
-        }
-    }
-
-    if saw_root && normalized.as_os_str().is_empty() {
-        PathBuf::from("/")
-    } else {
-        normalized
-    }
-}
-
-fn resolve_target_cached(cache: &mut HashMap<PathBuf, PathBuf>, system_target: &Path) -> PathBuf {
-    if let Some(cached) = cache.get(system_target) {
-        return cached.clone();
-    }
-
-    let resolved = resolve_target(system_target);
-    cache.insert(system_target.to_path_buf(), resolved.clone());
-    resolved
-}
-
 fn path_has_descendant_rule(paths: &HashMap<String, MountMode>, relative_path: &Path) -> bool {
     let relative = relative_path.to_string_lossy();
     let prefix = format!("{relative}/");
@@ -156,8 +79,8 @@ fn log_mode_decision(
             "mode decision: module={}, relative={}, requested={}, effective={}",
             module.id,
             relative_display,
-            mode_name(requested_mode),
-            mode_name(effective_mode)
+            requested_mode.as_strategy(),
+            effective_mode.as_strategy()
         );
     } else {
         crate::scoped_log!(
@@ -166,192 +89,10 @@ fn log_mode_decision(
             "mode decision: module={}, relative={}, requested={}, effective={}",
             module.id,
             relative_display,
-            mode_name(requested_mode),
-            mode_name(effective_mode)
+            requested_mode.as_strategy(),
+            effective_mode.as_strategy()
         );
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn plan_subtree(
-    module: &Module,
-    start: ProcessingItem,
-    use_hymofs: bool,
-    target_cache: &mut HashMap<PathBuf, PathBuf>,
-    overlay_groups: &mut BTreeMap<PathBuf, (String, Vec<PathBuf>)>,
-    sensitive_partitions: &HashSet<&str>,
-    extra_partitions: &HashSet<&str>,
-) -> BackendPresence {
-    let mut presence = BackendPresence::default();
-    let mut queue = VecDeque::from([start]);
-
-    while let Some(item) = queue.pop_front() {
-        let ProcessingItem {
-            module_source,
-            system_target,
-            relative_path,
-            partition_label,
-        } = item;
-
-        let requested_mode = module
-            .rules
-            .get_mode(relative_path.to_string_lossy().as_ref());
-        let effective_mode = effective_mount_mode(&requested_mode, use_hymofs);
-        log_mode_decision(module, &relative_path, &requested_mode, &effective_mode);
-
-        let has_descendant_rules = path_has_descendant_rule(&module.rules.paths, &relative_path);
-
-        let mut child_dirs = Vec::new();
-        let mut direct_non_dir_entries = false;
-        match fs::read_dir(&module_source) {
-            Ok(entries) => {
-                for sub_entry_result in entries {
-                    let sub_entry = match sub_entry_result {
-                        Ok(sub_entry) => sub_entry,
-                        Err(err) => {
-                            crate::scoped_log!(
-                                warn,
-                                "planner",
-                                "enumerate subtree failed: module={}, path={}, error={}",
-                                module.id,
-                                module_source.display(),
-                                err
-                            );
-                            continue;
-                        }
-                    };
-
-                    let sub_path = sub_entry.path();
-                    match sub_entry.file_type() {
-                        Ok(file_type) if file_type.is_symlink() => {
-                            direct_non_dir_entries = true;
-                        }
-                        Ok(file_type) if file_type.is_dir() => {
-                            child_dirs.push((sub_entry.file_name(), sub_path));
-                        }
-                        Ok(_) => {
-                            direct_non_dir_entries = true;
-                        }
-                        Err(err) => {
-                            crate::scoped_log!(
-                                warn,
-                                "planner",
-                                "subtree file type failed: module={}, path={}, error={}",
-                                module.id,
-                                sub_path.display(),
-                                err
-                            );
-                        }
-                    }
-                }
-            }
-            Err(err) => {
-                crate::scoped_log!(
-                    warn,
-                    "planner",
-                    "read subtree failed: module={}, path={}, error={}",
-                    module.id,
-                    module_source.display(),
-                    err
-                );
-                continue;
-            }
-        }
-
-        if matches!(effective_mode, MountMode::Magic)
-            && (direct_non_dir_entries || !child_dirs.is_empty())
-        {
-            presence.magic = true;
-        }
-        if matches!(effective_mode, MountMode::Hymofs)
-            && (direct_non_dir_entries || !child_dirs.is_empty())
-        {
-            presence.hymofs = true;
-        }
-
-        if matches!(effective_mode, MountMode::Overlay)
-            && direct_non_dir_entries
-            && has_descendant_rules
-        {
-            crate::scoped_log!(
-                warn,
-                "planner",
-                "mixed overlay subtree requires split: module={}, relative={}, behavior=directory_only",
-                module.id,
-                relative_path.display()
-            );
-        }
-
-        if !has_descendant_rules {
-            match effective_mode {
-                MountMode::Magic | MountMode::Ignore | MountMode::Hymofs => continue,
-                MountMode::Overlay => {
-                    if !system_target.exists() {
-                        crate::scoped_log!(
-                            debug,
-                            "planner",
-                            "target skip: module={}, reason=missing_target, path={}",
-                            module.id,
-                            system_target.display()
-                        );
-                        continue;
-                    }
-
-                    let resolved_target = resolve_target_cached(target_cache, &system_target);
-                    let target_name = resolved_target
-                        .file_name()
-                        .map(|s| s.to_string_lossy())
-                        .unwrap_or_default();
-                    let should_split = sensitive_partitions.contains(target_name.as_ref())
-                        || extra_partitions.contains(target_name.as_ref())
-                        || target_name == "system";
-
-                    if !should_split {
-                        crate::scoped_log!(
-                            debug,
-                            "planner",
-                            "queue overlay: module={}, partition={}, layer={}, target={}",
-                            module.id,
-                            partition_label,
-                            module_source.display(),
-                            resolved_target.display()
-                        );
-                        let (_, layers) = overlay_groups
-                            .entry(resolved_target)
-                            .or_insert_with(|| (partition_label.clone(), Vec::new()));
-                        layers.push(module_source);
-                        continue;
-                    }
-                }
-            }
-        }
-
-        let resolved_target = if system_target.exists() {
-            resolve_target_cached(target_cache, &system_target)
-        } else {
-            system_target.clone()
-        };
-        let target_name = resolved_target
-            .file_name()
-            .map(|s| s.to_string_lossy())
-            .unwrap_or_default();
-        let next_partition_label = if target_name.is_empty() {
-            partition_label.clone()
-        } else {
-            target_name.to_string()
-        };
-
-        for (sub_name, sub_path) in child_dirs {
-            queue.push_back(ProcessingItem {
-                module_source: sub_path,
-                system_target: resolved_target.join(&sub_name),
-                relative_path: relative_path.join(&sub_name),
-                partition_label: next_partition_label.clone(),
-            });
-        }
-    }
-
-    presence
 }
 
 pub fn generate(
@@ -380,8 +121,6 @@ fn generate_with_root(
 
     let mut plan = MountPlan::default();
 
-    let mut overlay_groups: BTreeMap<PathBuf, (String, Vec<PathBuf>)> = BTreeMap::new();
-    let mut target_cache: HashMap<PathBuf, PathBuf> = HashMap::new();
     let module_rank: HashMap<&str, usize> = modules
         .iter()
         .enumerate()
@@ -391,15 +130,12 @@ fn generate_with_root(
     let mut magic_ids = HashSet::new();
     let mut hymofs_ids = HashSet::new();
 
-    let sensitive_partitions: HashSet<&str> = defs::SENSITIVE_PARTITIONS.iter().cloned().collect();
-    let extra_partitions: HashSet<&str> = config.partitions.iter().map(String::as_str).collect();
     let managed_partitions = defs::managed_partition_set(&config.partitions);
-    let use_hymofs = capabilities.can_use_hymofs();
-    let hymofs_requested = modules
-        .iter()
-        .any(HymofsCoordinator::module_requests_hymofs);
+    let hymofs = HymofsCoordinator::new(config);
+    let hymofs_planning = hymofs.planning_state(capabilities, modules);
+    let mut planner = PlannerContext::new(config, hymofs_planning.available);
 
-    if hymofs_requested && !use_hymofs {
+    if hymofs_planning.requested && !hymofs_planning.available {
         if config.hymofs.enabled {
             crate::scoped_log!(
                 warn,
@@ -428,99 +164,23 @@ fn generate_with_root(
             continue;
         };
 
-        match fs::read_dir(&content_path) {
-            Ok(entries) => {
-                for entry_result in entries {
-                    let entry = match entry_result {
-                        Ok(entry) => entry,
-                        Err(err) => {
-                            crate::scoped_log!(
-                                warn,
-                                "planner",
-                                "enumerate content failed: module={}, path={}, error={}",
-                                module.id,
-                                content_path.display(),
-                                err
-                            );
-                            continue;
-                        }
-                    };
-
-                    let path = entry.path();
-                    if !path.is_dir() {
-                        continue;
-                    }
-
-                    match entry.file_type() {
-                        Ok(file_type) if file_type.is_symlink() => continue,
-                        Ok(_) => {}
-                        Err(err) => {
-                            crate::scoped_log!(
-                                warn,
-                                "planner",
-                                "file type failed: module={}, path={}, error={}",
-                                module.id,
-                                path.display(),
-                                err
-                            );
-                            continue;
-                        }
-                    }
-
-                    let dir_name = entry.file_name();
-                    let Some(dir_name) = dir_name.to_str() else {
-                        crate::scoped_log!(
-                            warn,
-                            "planner",
-                            "skip: module={}, reason=non_utf8_partition_dir, path={:?}",
-                            module.id,
-                            path
-                        );
-                        continue;
-                    };
-
-                    if !managed_partitions.contains(dir_name) {
-                        continue;
-                    }
-
-                    let presence = plan_subtree(
-                        module,
-                        ProcessingItem {
-                            module_source: path.clone(),
-                            system_target: system_root.join(dir_name),
-                            relative_path: PathBuf::from(dir_name),
-                            partition_label: dir_name.to_string(),
-                        },
-                        use_hymofs,
-                        &mut target_cache,
-                        &mut overlay_groups,
-                        &sensitive_partitions,
-                        &extra_partitions,
-                    );
-
-                    if presence.magic {
-                        magic_ids.insert(module.id.clone());
-                    }
-                    if presence.hymofs {
-                        hymofs_ids.insert(module.id.clone());
-                    }
-                }
-            }
-            Err(err) => {
-                crate::scoped_log!(
-                    warn,
-                    "planner",
-                    "read content root failed: module={}, path={}, error={}",
-                    module.id,
-                    content_path.display(),
-                    err
-                );
-            }
+        let presence = plan_module_roots(
+            module,
+            &content_path,
+            system_root,
+            &managed_partitions,
+            &mut planner,
+        );
+        if presence.magic {
+            magic_ids.insert(module.id.clone());
+        }
+        if presence.hymofs {
+            hymofs_ids.insert(module.id.clone());
         }
     }
 
     let mut overlay_ids = HashSet::new();
-    for (target_path, (partition_name, mut layers)) in overlay_groups {
+    for (target_path, (partition_name, mut layers)) in planner.into_overlay_groups() {
         let target_str = target_path.to_string_lossy().to_string();
 
         if !target_path.is_dir() {

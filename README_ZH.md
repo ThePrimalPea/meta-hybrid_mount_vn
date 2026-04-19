@@ -153,7 +153,7 @@ default_mode = "magic"
 | `hymofs.enable_maps_spoof` / `hymofs.maps_rules` | 启用 maps spoof，并安装 inode/device 映射规则。 |
 | `hymofs.enable_statfs_spoof` / `hymofs.statfs_spoof.*` | 启用通用或按路径生效的 `statfs` 伪装。 |
 | `hymofs.hide_uids` | 配置需要隐藏的 UID 集合。 |
-| `hymofs.uname.*`、`hymofs.uname_release`、`hymofs.uname_version` | 结构化与兼容字段两套 uname 伪装配置。 |
+| `hymofs.uname.*` | 结构化 uname 伪装配置。 |
 | `hymofs.cmdline_value` | 替换内核 cmdline 内容。 |
 | `hymofs.kstat_rules` | 按目标应用的 stat 元数据伪装规则。 |
 

@@ -14,6 +14,7 @@
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+pub mod path;
 pub mod validation;
 
 use std::{
@@ -23,7 +24,7 @@ use std::{
 
 use anyhow::Result;
 
-pub use self::validation::*;
+pub use self::{path::*, validation::*};
 #[macro_export]
 macro_rules! scoped_log {
     ($level:ident, $scope:literal, $fmt:literal $(, $args:expr)* $(,)?) => {

@@ -31,6 +31,12 @@ use crate::{
     mount::hymofs,
 };
 
+#[derive(Debug, Clone, Copy)]
+pub struct HymofsPlanningState {
+    pub requested: bool,
+    pub available: bool,
+}
+
 pub struct HymofsCoordinator<'a> {
     config: &'a Config,
 }
@@ -49,12 +55,36 @@ impl<'a> HymofsCoordinator<'a> {
                 .any(|mode| matches!(mode, MountMode::Hymofs))
     }
 
+    pub fn requested_by_modules(modules: &[Module]) -> bool {
+        modules.iter().any(Self::module_requests_hymofs)
+    }
+
+    pub fn requested_module_ids(modules: &[Module]) -> Vec<String> {
+        modules
+            .iter()
+            .filter(|module| Self::module_requests_hymofs(module))
+            .map(|module| module.id.clone())
+            .collect()
+    }
+
+    pub fn planning_state(
+        &self,
+        capabilities: &BackendCapabilities,
+        modules: &[Module],
+    ) -> HymofsPlanningState {
+        HymofsPlanningState {
+            requested: Self::requested_by_modules(modules),
+            available: capabilities.can_use_hymofs(),
+        }
+    }
+
     pub fn backend_requested(
         &self,
         capabilities: &BackendCapabilities,
         modules: &[Module],
     ) -> bool {
-        capabilities.can_use_hymofs() && modules.iter().any(Self::module_requests_hymofs)
+        let planning = self.planning_state(capabilities, modules);
+        planning.requested && planning.available
     }
 
     pub fn hymofs_modules<'m>(&self, modules: &'m [Module]) -> Vec<&'m Module> {
