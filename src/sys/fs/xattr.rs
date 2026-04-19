@@ -18,7 +18,7 @@
 use std::sync::OnceLock;
 use std::{
     collections::HashMap,
-    fs,
+    fmt, fs,
     path::{Component, Path, PathBuf},
 };
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -68,6 +68,15 @@ pub enum LiveContextApplyOutcome {
         source: PathBuf,
         kind: LiveContextSourceKind,
     },
+}
+
+impl fmt::Display for LiveContextSourceKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LiveContextSourceKind::Exact => f.write_str("exact"),
+            LiveContextSourceKind::AncestorFallback => f.write_str("ancestor_fallback"),
+        }
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -543,10 +552,7 @@ pub fn apply_best_effort_live_context_with_cache(
                 target_dir.display(),
                 source.display(),
                 context,
-                match kind {
-                    LiveContextSourceKind::Exact => "exact",
-                    LiveContextSourceKind::AncestorFallback => "ancestor_fallback",
-                }
+                kind
             );
         } else {
             crate::scoped_log!(
@@ -559,10 +565,7 @@ pub fn apply_best_effort_live_context_with_cache(
                 target_dir.display(),
                 source.display(),
                 context,
-                match kind {
-                    LiveContextSourceKind::Exact => "exact",
-                    LiveContextSourceKind::AncestorFallback => "ancestor_fallback",
-                }
+                kind
             );
         }
 
@@ -574,10 +577,7 @@ pub fn apply_best_effort_live_context_with_cache(
                 relative_display,
                 dst.display(),
                 source.display(),
-                match kind {
-                    LiveContextSourceKind::Exact => "exact",
-                    LiveContextSourceKind::AncestorFallback => "ancestor_fallback",
-                },
+                kind,
                 err
             );
             return LiveContextApplyOutcome::ApplyFailed { source, kind };
