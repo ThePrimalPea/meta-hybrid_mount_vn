@@ -15,7 +15,7 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
-use std::sync::OnceLock;
+use std::sync::atomic::AtomicBool;
 use std::{
     collections::HashMap,
     fmt, fs,
@@ -35,7 +35,7 @@ const SELINUX_XATTR: &str = "security.selinux";
 #[cfg(any(target_os = "linux", target_os = "android"))]
 const OVERLAY_OPAQUE_XATTR: &str = "trusted.overlay.opaque";
 #[cfg(any(target_os = "linux", target_os = "android"))]
-static TMPFS_XATTR_SUPPORTED: OnceLock<bool> = OnceLock::new();
+static TMPFS_XATTR_SUPPORTED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Default)]
 pub struct LiveContextCache {
@@ -195,8 +195,8 @@ pub fn lgetfilecon<P: AsRef<Path>>(_path: P) -> Result<String> {
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn is_overlay_xattr_supported() -> Result<bool> {
-    if let Some(cached) = TMPFS_XATTR_SUPPORTED.get() {
-        return Ok(*cached);
+    if TMPFS_XATTR_SUPPORTED.load(std::sync::atomic::Ordering::Relaxed) {
+        return Ok(true);
     }
 
     use flate2::read::GzDecoder;
@@ -218,7 +218,7 @@ pub fn is_overlay_xattr_supported() -> Result<bool> {
         k.trim() == "CONFIG_TMPFS_XATTR" && v.trim() == "y"
     });
 
-    let _ = TMPFS_XATTR_SUPPORTED.set(supported);
+    TMPFS_XATTR_SUPPORTED.store(supported, std::sync::atomic::Ordering::Relaxed);
 
     Ok(supported)
 }
