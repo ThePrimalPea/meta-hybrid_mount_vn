@@ -21,7 +21,11 @@ use std::{
 };
 
 use anyhow::Result;
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use rustix::mount::{UnmountFlags, unmount as umount};
 
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use crate::sys::mount::is_mounted;
 use crate::{
     conf::config::Config,
     core::{
@@ -333,7 +337,32 @@ fn clean_up_path(tempdir: &Path, hymofs_mirror_path: &Path) -> Result<()> {
         "cleanup: remove={}",
         tempdir.display()
     );
+    detach_tempdir_mount(tempdir)?;
     remove_path(tempdir)
+}
+
+fn detach_tempdir_mount(tempdir: &Path) -> Result<()> {
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    {
+        let _ = tempdir;
+        Ok(())
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        if !is_mounted(tempdir) {
+            return Ok(());
+        }
+
+        crate::scoped_log!(
+            info,
+            "controller:finalize",
+            "cleanup umount: path={}",
+            tempdir.display()
+        );
+        umount(tempdir, UnmountFlags::DETACH)?;
+        Ok(())
+    }
 }
 
 fn remove_path(path: &Path) -> Result<()> {
@@ -344,9 +373,29 @@ fn remove_path(path: &Path) -> Result<()> {
     };
 
     if metadata.file_type().is_dir() {
-        fs::remove_dir_all(path)?;
-    } else {
-        fs::remove_file(path)?;
+        if let Err(err) = fs::remove_dir_all(path) {
+            if err.raw_os_error() == Some(libc::EBUSY) {
+                crate::scoped_log!(
+                    warn,
+                    "controller:finalize",
+                    "cleanup skipped: path={}, reason=resource_busy",
+                    path.display()
+                );
+                return Ok(());
+            }
+            return Err(err.into());
+        }
+    } else if let Err(err) = fs::remove_file(path) {
+        if err.raw_os_error() == Some(libc::EBUSY) {
+            crate::scoped_log!(
+                warn,
+                "controller:finalize",
+                "cleanup skipped: path={}, reason=resource_busy",
+                path.display()
+            );
+            return Ok(());
+        }
+        return Err(err.into());
     }
 
     Ok(())

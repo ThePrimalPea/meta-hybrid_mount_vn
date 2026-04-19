@@ -120,7 +120,10 @@ impl<'a> HymofsCoordinator<'a> {
     }
 
     pub fn hide_overlay_xattrs(&self, target: &Path) {
-        if !self.config.hymofs.enabled || !hymofs::can_operate(self.config) {
+        if !self.config.hymofs.enabled
+            || !self.config.hymofs.enable_hidexattr
+            || !hymofs::can_operate(self.config)
+        {
             return;
         }
 
