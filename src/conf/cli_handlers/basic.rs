@@ -178,7 +178,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        conf::schema::OverlayMode,
+        conf::schema::{HymoFsConfig, OverlayMode},
         domain::{ModuleRules, MountMode},
     };
 
@@ -187,20 +187,25 @@ mod tests {
         let tempdir = tempdir().expect("tempdir");
         let config_path = tempdir.path().join("config.toml");
 
-        let mut config = Config::default();
-        config.moduledir = PathBuf::from("/data/adb/modules");
-        config.mountsource = "KSU".to_string();
-        config.partitions = vec!["system".to_string()];
-        config.overlay_mode = OverlayMode::Ext4;
-        config.default_mode = DefaultMode::Magic;
-        config.hymofs.enabled = true;
-        config.rules.insert(
-            "demo".to_string(),
-            ModuleRules {
-                default_mode: MountMode::Magic,
-                paths: HashMap::new(),
+        let config = Config {
+            moduledir: PathBuf::from("/data/adb/modules"),
+            mountsource: "KSU".to_string(),
+            partitions: vec!["system".to_string()],
+            overlay_mode: OverlayMode::Ext4,
+            default_mode: DefaultMode::Magic,
+            hymofs: HymoFsConfig {
+                enabled: true,
+                ..Default::default()
             },
-        );
+            rules: HashMap::from([(
+                "demo".to_string(),
+                ModuleRules {
+                    default_mode: MountMode::Magic,
+                    paths: HashMap::new(),
+                },
+            )]),
+            ..Default::default()
+        };
         config.save_to_file(&config_path).expect("seed config");
 
         let patch = SaveConfigPatch {
