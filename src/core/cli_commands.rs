@@ -42,6 +42,7 @@ pub fn run(cli: &Cli, command: &Commands) -> Result<()> {
             ApiCommands::System => cli_handlers::handle_api_system(cli),
             ApiCommands::Storage => cli_handlers::handle_api_storage(),
             ApiCommands::MountStats => cli_handlers::handle_api_mount_stats(),
+            ApiCommands::MountTopology => cli_handlers::handle_api_mount_topology(cli),
             ApiCommands::Partitions => cli_handlers::handle_api_partitions(cli),
             ApiCommands::Lkm => cli_handlers::handle_api_lkm(cli),
             ApiCommands::Features => cli_handlers::handle_api_features(),

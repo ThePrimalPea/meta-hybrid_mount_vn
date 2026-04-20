@@ -55,6 +55,18 @@ pub fn handle_api_mount_stats() -> Result<()> {
     Ok(())
 }
 
+pub fn handle_api_mount_topology(cli: &Cli) -> Result<()> {
+    let config = load_effective_config(cli)?;
+    let state = RuntimeState::load().unwrap_or_default();
+    let payload = api::build_mount_topology_payload(&config, &state);
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&payload)
+            .context("Failed to serialize API mount topology payload")?
+    );
+    Ok(())
+}
+
 pub fn handle_api_partitions(cli: &Cli) -> Result<()> {
     let config = load_effective_config(cli)?;
     let payload = api::build_partitions_payload(&config);

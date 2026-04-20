@@ -184,6 +184,8 @@ pub enum ApiCommands {
     Storage,
     #[command(name = "mount-stats")]
     MountStats,
+    #[command(name = "mount-topology")]
+    MountTopology,
     Partitions,
     Lkm,
     Features,

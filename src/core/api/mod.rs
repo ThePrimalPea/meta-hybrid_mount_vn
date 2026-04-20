@@ -16,6 +16,7 @@
 
 mod hymofs;
 mod system;
+mod topology;
 
 pub use self::{
     hymofs::{
@@ -26,4 +27,5 @@ pub use self::{
         build_mount_stats_payload, build_partitions_payload, build_storage_payload,
         build_system_payload,
     },
+    topology::build_mount_topology_payload,
 };

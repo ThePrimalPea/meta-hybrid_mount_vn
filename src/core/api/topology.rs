@@ -1,0 +1,571 @@
+// Copyright (C) 2026 YuzakiKokuban <heibanbaize@gmail.com>
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program; if not, write to the Free Software
+// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::{Path, PathBuf},
+};
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use anyhow::{Context, Result};
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use procfs::process::{MountInfo, MountOptFields, Process};
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use serde::Serialize;
+use serde_json::{Value, json};
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use crate::defs;
+use crate::{conf::config::Config, core::runtime_state::RuntimeState};
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[derive(Debug, Clone, Serialize)]
+struct MountTopologyPayload {
+    supported: bool,
+    inspected_pid: u32,
+    state_pid: u32,
+    configured_mount_source: String,
+    state_mount_point: String,
+    active_mounts: Vec<String>,
+    error: Option<String>,
+    summary: Option<MountTopologySummary>,
+    warnings: Vec<String>,
+    focus_mounts: Vec<MountTopologyEntry>,
+    shared_peer_groups: Vec<SharedPeerGroupSummary>,
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[derive(Debug, Clone, Serialize)]
+struct MountTopologySummary {
+    total_mounts: usize,
+    hymofs_excluded_mounts: usize,
+    inspected_mounts: usize,
+    focus_mounts: usize,
+    project_related_mounts: usize,
+    managed_partition_root_mounts: usize,
+    managed_partition_root_propagation_mounts: usize,
+    active_partition_tree_mounts: usize,
+    active_partition_tree_propagation_mounts: usize,
+    hybrid_mount_internal_mounts: usize,
+    hybrid_mount_internal_propagation_mounts: usize,
+    storage_mounts: usize,
+    overlayfs_mounts: usize,
+    shared_mounts: usize,
+    slave_mounts: usize,
+    receiving_propagation_mounts: usize,
+    propagate_from_mounts: usize,
+    unbindable_mounts: usize,
+    shared_peer_groups: usize,
+    largest_shared_peer_group: usize,
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[derive(Debug, Clone, Serialize)]
+struct MountTopologyEntry {
+    mount_id: i32,
+    parent_mount_id: i32,
+    major_minor: String,
+    mount_point: String,
+    root: String,
+    fs_type: String,
+    mount_source: Option<String>,
+    propagation: MountPropagationInfo,
+    tags: Vec<String>,
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[derive(Debug, Clone, Serialize, Default)]
+struct MountPropagationInfo {
+    shared: Option<u32>,
+    master: Option<u32>,
+    propagate_from: Option<u32>,
+    unbindable: bool,
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[derive(Debug, Clone, Serialize)]
+struct SharedPeerGroupSummary {
+    peer_group: u32,
+    mount_count: usize,
+    managed_partition_root_mounts: usize,
+    active_partition_tree_mounts: usize,
+    hybrid_mount_internal_mounts: usize,
+    overlayfs_mounts: usize,
+    mount_points: Vec<String>,
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[derive(Debug, Default)]
+struct MountCounters {
+    total_mounts: usize,
+    hymofs_excluded_mounts: usize,
+    project_related_mounts: usize,
+    managed_partition_root_mounts: usize,
+    managed_partition_root_propagation_mounts: usize,
+    active_partition_tree_mounts: usize,
+    active_partition_tree_propagation_mounts: usize,
+    hybrid_mount_internal_mounts: usize,
+    hybrid_mount_internal_propagation_mounts: usize,
+    storage_mounts: usize,
+    overlayfs_mounts: usize,
+    shared_mounts: usize,
+    slave_mounts: usize,
+    receiving_propagation_mounts: usize,
+    propagate_from_mounts: usize,
+    unbindable_mounts: usize,
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[derive(Debug, Default)]
+struct PeerGroupAccumulator {
+    mount_count: usize,
+    managed_partition_root_mounts: usize,
+    active_partition_tree_mounts: usize,
+    hybrid_mount_internal_mounts: usize,
+    overlayfs_mounts: usize,
+    mount_points: Vec<String>,
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[derive(Debug, Default)]
+struct MountClassifications {
+    tags: Vec<String>,
+    project_related: bool,
+    managed_partition_root: bool,
+    active_partition_tree: bool,
+    hybrid_mount_internal: bool,
+    storage_mount: bool,
+    overlayfs: bool,
+}
+
+pub fn build_mount_topology_payload(config: &Config, state: &RuntimeState) -> Value {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        let inspected_pid = std::process::id();
+
+        match collect_mount_topology(config, state, inspected_pid) {
+            Ok(payload) => serde_json::to_value(payload).unwrap_or_else(|err| {
+                json!({
+                    "supported": true,
+                    "inspected_pid": inspected_pid,
+                    "state_pid": state.pid,
+                    "configured_mount_source": config.mountsource.clone(),
+                    "state_mount_point": state.mount_point.display().to_string(),
+                    "active_mounts": state.active_mounts.clone(),
+                    "error": format!("failed to serialize mount topology payload: {err}"),
+                    "summary": Value::Null,
+                    "warnings": Vec::<String>::new(),
+                    "focus_mounts": Vec::<Value>::new(),
+                    "shared_peer_groups": Vec::<Value>::new(),
+                })
+            }),
+            Err(err) => json!({
+                "supported": true,
+                "inspected_pid": inspected_pid,
+                "state_pid": state.pid,
+                "configured_mount_source": config.mountsource.clone(),
+                "state_mount_point": state.mount_point.display().to_string(),
+                "active_mounts": state.active_mounts.clone(),
+                "error": format!("{err:#}"),
+                "summary": Value::Null,
+                "warnings": Vec::<String>::new(),
+                "focus_mounts": Vec::<Value>::new(),
+                "shared_peer_groups": Vec::<Value>::new(),
+            }),
+        }
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    {
+        json!({
+            "supported": false,
+            "inspected_pid": std::process::id(),
+            "state_pid": state.pid,
+            "configured_mount_source": config.mountsource.clone(),
+            "state_mount_point": state.mount_point.display().to_string(),
+            "active_mounts": state.active_mounts.clone(),
+            "error": "mount topology inspection is only supported on linux/android",
+            "summary": Value::Null,
+            "warnings": Vec::<String>::new(),
+            "focus_mounts": Vec::<Value>::new(),
+            "shared_peer_groups": Vec::<Value>::new(),
+        })
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn collect_mount_topology(
+    config: &Config,
+    state: &RuntimeState,
+    inspected_pid: u32,
+) -> Result<MountTopologyPayload> {
+    let managed_partition_roots = defs::managed_partition_names(&config.partitions)
+        .into_iter()
+        .map(|name| PathBuf::from(format!("/{name}")))
+        .collect::<Vec<_>>();
+    let active_partition_roots = state
+        .active_mounts
+        .iter()
+        .filter(|name| name.as_str() != "hymofs")
+        .map(|name| PathBuf::from(format!("/{name}")))
+        .collect::<Vec<_>>();
+
+    let mountinfo = Process::myself()
+        .context("failed to open self procfs handle")?
+        .mountinfo()
+        .context("failed to read mountinfo")?;
+
+    let mut counters = MountCounters::default();
+    let mut focus_mounts = Vec::new();
+    let mut peer_groups: BTreeMap<u32, PeerGroupAccumulator> = BTreeMap::new();
+
+    for mount in mountinfo {
+        counters.total_mounts += 1;
+
+        if is_hymofs_mount(&mount, config) {
+            counters.hymofs_excluded_mounts += 1;
+            continue;
+        }
+
+        let propagation = collect_propagation(&mount.opt_fields);
+        let classifications = classify_mount(
+            &mount,
+            &propagation,
+            &managed_partition_roots,
+            &active_partition_roots,
+            state.mount_point.as_path(),
+        );
+        let has_propagation = propagation.shared.is_some()
+            || propagation.master.is_some()
+            || propagation.propagate_from.is_some()
+            || propagation.unbindable;
+
+        if classifications.project_related {
+            counters.project_related_mounts += 1;
+        }
+        if classifications.managed_partition_root {
+            counters.managed_partition_root_mounts += 1;
+            if has_propagation {
+                counters.managed_partition_root_propagation_mounts += 1;
+            }
+        }
+        if classifications.active_partition_tree {
+            counters.active_partition_tree_mounts += 1;
+            if has_propagation {
+                counters.active_partition_tree_propagation_mounts += 1;
+            }
+        }
+        if classifications.hybrid_mount_internal {
+            counters.hybrid_mount_internal_mounts += 1;
+            if has_propagation {
+                counters.hybrid_mount_internal_propagation_mounts += 1;
+            }
+        }
+        if classifications.storage_mount {
+            counters.storage_mounts += 1;
+        }
+        if classifications.overlayfs {
+            counters.overlayfs_mounts += 1;
+        }
+        if propagation.shared.is_some() {
+            counters.shared_mounts += 1;
+        }
+        if propagation.master.is_some() {
+            counters.slave_mounts += 1;
+        }
+        if propagation.master.is_some() || propagation.propagate_from.is_some() {
+            counters.receiving_propagation_mounts += 1;
+        }
+        if propagation.propagate_from.is_some() {
+            counters.propagate_from_mounts += 1;
+        }
+        if propagation.unbindable {
+            counters.unbindable_mounts += 1;
+        }
+
+        if let Some(peer_group) = propagation.shared {
+            let group = peer_groups.entry(peer_group).or_default();
+            group.mount_count += 1;
+            group.managed_partition_root_mounts +=
+                usize::from(classifications.managed_partition_root);
+            group.active_partition_tree_mounts +=
+                usize::from(classifications.active_partition_tree);
+            group.hybrid_mount_internal_mounts +=
+                usize::from(classifications.hybrid_mount_internal);
+            group.overlayfs_mounts += usize::from(classifications.overlayfs);
+            group
+                .mount_points
+                .push(mount.mount_point.display().to_string());
+        }
+
+        if should_include_focus_mount(&classifications, &propagation) {
+            focus_mounts.push(MountTopologyEntry {
+                mount_id: mount.mnt_id,
+                parent_mount_id: mount.pid,
+                major_minor: mount.majmin.clone(),
+                mount_point: mount.mount_point.display().to_string(),
+                root: mount.root.clone(),
+                fs_type: mount.fs_type.clone(),
+                mount_source: mount.mount_source.clone(),
+                propagation,
+                tags: classifications.tags,
+            });
+        }
+    }
+
+    focus_mounts.sort_by(|left, right| {
+        left.mount_point
+            .cmp(&right.mount_point)
+            .then(left.mount_id.cmp(&right.mount_id))
+    });
+
+    let shared_peer_groups = peer_groups
+        .into_iter()
+        .map(|(peer_group, mut group)| {
+            group.mount_points.sort();
+            group.mount_points.dedup();
+            if group.mount_points.len() > 8 {
+                group.mount_points.truncate(8);
+            }
+
+            SharedPeerGroupSummary {
+                peer_group,
+                mount_count: group.mount_count,
+                managed_partition_root_mounts: group.managed_partition_root_mounts,
+                active_partition_tree_mounts: group.active_partition_tree_mounts,
+                hybrid_mount_internal_mounts: group.hybrid_mount_internal_mounts,
+                overlayfs_mounts: group.overlayfs_mounts,
+                mount_points: group.mount_points,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let largest_shared_peer_group = shared_peer_groups
+        .iter()
+        .map(|group| group.mount_count)
+        .max()
+        .unwrap_or(0);
+
+    let inspected_mounts = counters
+        .total_mounts
+        .saturating_sub(counters.hymofs_excluded_mounts);
+
+    let warnings = build_warnings(&counters, &shared_peer_groups);
+
+    Ok(MountTopologyPayload {
+        supported: true,
+        inspected_pid,
+        state_pid: state.pid,
+        configured_mount_source: config.mountsource.clone(),
+        state_mount_point: state.mount_point.display().to_string(),
+        active_mounts: state.active_mounts.clone(),
+        error: None,
+        summary: Some(MountTopologySummary {
+            total_mounts: counters.total_mounts,
+            hymofs_excluded_mounts: counters.hymofs_excluded_mounts,
+            inspected_mounts,
+            focus_mounts: focus_mounts.len(),
+            project_related_mounts: counters.project_related_mounts,
+            managed_partition_root_mounts: counters.managed_partition_root_mounts,
+            managed_partition_root_propagation_mounts: counters
+                .managed_partition_root_propagation_mounts,
+            active_partition_tree_mounts: counters.active_partition_tree_mounts,
+            active_partition_tree_propagation_mounts: counters
+                .active_partition_tree_propagation_mounts,
+            hybrid_mount_internal_mounts: counters.hybrid_mount_internal_mounts,
+            hybrid_mount_internal_propagation_mounts: counters
+                .hybrid_mount_internal_propagation_mounts,
+            storage_mounts: counters.storage_mounts,
+            overlayfs_mounts: counters.overlayfs_mounts,
+            shared_mounts: counters.shared_mounts,
+            slave_mounts: counters.slave_mounts,
+            receiving_propagation_mounts: counters.receiving_propagation_mounts,
+            propagate_from_mounts: counters.propagate_from_mounts,
+            unbindable_mounts: counters.unbindable_mounts,
+            shared_peer_groups: shared_peer_groups.len(),
+            largest_shared_peer_group,
+        }),
+        warnings,
+        focus_mounts,
+        shared_peer_groups,
+    })
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn collect_propagation(fields: &[MountOptFields]) -> MountPropagationInfo {
+    let mut info = MountPropagationInfo::default();
+
+    for field in fields {
+        match field {
+            MountOptFields::Shared(value) => info.shared = Some(*value),
+            MountOptFields::Master(value) => info.master = Some(*value),
+            MountOptFields::PropagateFrom(value) => info.propagate_from = Some(*value),
+            MountOptFields::Unbindable => info.unbindable = true,
+        }
+    }
+
+    info
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn classify_mount(
+    mount: &MountInfo,
+    propagation: &MountPropagationInfo,
+    managed_partition_roots: &[PathBuf],
+    active_partition_roots: &[PathBuf],
+    state_mount_point: &Path,
+) -> MountClassifications {
+    let mut tags = BTreeSet::new();
+    let mount_point = mount.mount_point.as_path();
+    let mount_source = mount.mount_source.as_deref().map(Path::new);
+
+    let managed_partition_root = managed_partition_roots
+        .iter()
+        .any(|root| mount_point == root);
+    let active_partition_tree = active_partition_roots
+        .iter()
+        .any(|root| mount_point.starts_with(root));
+    let hybrid_mount_internal = mount_point.starts_with(defs::HYBRID_MOUNT_DIR)
+        || mount_source.is_some_and(|path| path.starts_with(defs::HYBRID_MOUNT_DIR));
+    let storage_mount = !state_mount_point.as_os_str().is_empty()
+        && (mount_point == state_mount_point
+            || mount_point.starts_with(state_mount_point)
+            || mount_source.is_some_and(|path| {
+                path == state_mount_point || path.starts_with(state_mount_point)
+            }));
+    let overlayfs = mount.fs_type == "overlay";
+
+    if managed_partition_root {
+        tags.insert("managed_partition_root".to_string());
+    }
+    if active_partition_tree {
+        tags.insert("active_partition_tree".to_string());
+    }
+    if hybrid_mount_internal {
+        tags.insert("hybrid_mount_internal".to_string());
+    }
+    if storage_mount {
+        tags.insert("mount_storage".to_string());
+    }
+    if overlayfs {
+        tags.insert("overlayfs".to_string());
+    }
+    if propagation.shared.is_some() {
+        tags.insert("shared_peer".to_string());
+    }
+    if propagation.master.is_some() {
+        tags.insert("slave".to_string());
+    }
+    if propagation.propagate_from.is_some() {
+        tags.insert("propagate_from".to_string());
+    }
+    if propagation.unbindable {
+        tags.insert("unbindable".to_string());
+    }
+
+    MountClassifications {
+        project_related: managed_partition_root
+            || active_partition_tree
+            || hybrid_mount_internal
+            || storage_mount,
+        managed_partition_root,
+        active_partition_tree,
+        hybrid_mount_internal,
+        storage_mount,
+        overlayfs,
+        tags: tags.into_iter().collect(),
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn should_include_focus_mount(
+    classifications: &MountClassifications,
+    propagation: &MountPropagationInfo,
+) -> bool {
+    classifications.project_related
+        || classifications.overlayfs
+        || propagation.shared.is_some()
+        || propagation.master.is_some()
+        || propagation.propagate_from.is_some()
+        || propagation.unbindable
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn is_hymofs_mount(mount: &MountInfo, config: &Config) -> bool {
+    let mount_point = mount.mount_point.as_path();
+    let mount_source = mount.mount_source.as_deref().map(Path::new);
+
+    mount.fs_type.to_ascii_lowercase().contains("hymo")
+        || mount_point.starts_with(config.hymofs.mirror_path.as_path())
+        || mount_source.is_some_and(|path| path.starts_with(config.hymofs.mirror_path.as_path()))
+        || mount_point.starts_with(defs::HYMOFS_MIRROR_DIR)
+        || mount_source.is_some_and(|path| path.starts_with(defs::HYMOFS_MIRROR_DIR))
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn build_warnings(
+    counters: &MountCounters,
+    shared_peer_groups: &[SharedPeerGroupSummary],
+) -> Vec<String> {
+    let mut warnings = BTreeSet::new();
+
+    if counters.shared_mounts > 0 {
+        warnings.insert(format!(
+            "{} non-HymoFS mounts still belong to shared peer groups.",
+            counters.shared_mounts
+        ));
+    }
+    if counters.receiving_propagation_mounts > 0 {
+        warnings.insert(format!(
+            "{} non-HymoFS mounts still receive propagation from another peer group.",
+            counters.receiving_propagation_mounts
+        ));
+    }
+    if counters.hybrid_mount_internal_propagation_mounts > 0 {
+        warnings.insert(
+            format!(
+                "{} Hybrid Mount internal mounts still show propagation metadata; compare these before and after setup when users report mount peer gaps.",
+                counters.hybrid_mount_internal_propagation_mounts
+            ),
+        );
+    }
+    if counters.managed_partition_root_propagation_mounts > 0 {
+        warnings.insert(format!(
+            "{} managed partition root mounts still show propagation metadata.",
+            counters.managed_partition_root_propagation_mounts
+        ));
+    }
+    if counters.active_partition_tree_propagation_mounts > 0 {
+        warnings.insert(
+            format!(
+                "{} mounts under active partition trees still show propagation metadata; these are the first candidates to diff in issue reports.",
+                counters.active_partition_tree_propagation_mounts
+            ),
+        );
+    }
+    if let Some(group) = shared_peer_groups
+        .iter()
+        .max_by_key(|group| group.mount_count)
+    {
+        warnings.insert(format!(
+            "Largest non-HymoFS shared peer group is {} with {} mounts.",
+            group.peer_group, group.mount_count
+        ));
+    }
+
+    warnings.into_iter().collect()
+}

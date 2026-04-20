@@ -58,7 +58,11 @@ fn parse_i64_token(token: &str) -> Option<i64> {
 fn extract_kpm_rc_from_text(text: &str) -> Option<i64> {
     text.split_whitespace()
         .find_map(|token| token.strip_prefix("rc=").and_then(parse_i64_token))
-        .or_else(|| text.lines().rev().find_map(|line| line.trim().parse::<i64>().ok()))
+        .or_else(|| {
+            text.lines()
+                .rev()
+                .find_map(|line| line.trim().parse::<i64>().ok())
+        })
 }
 
 #[cfg(any(target_os = "linux", target_os = "android", test))]
