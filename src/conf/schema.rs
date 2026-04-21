@@ -116,8 +116,6 @@ pub struct HymoStatfsSpoofConfig {
 pub struct HymoFsConfig {
     #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
-    pub ignore_protocol_mismatch: bool,
     #[serde(default = "default_true")]
     pub lkm_autoload: bool,
     #[serde(default = "default_hymofs_lkm_dir")]
@@ -158,7 +156,6 @@ impl Default for HymoFsConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            ignore_protocol_mismatch: false,
             lkm_autoload: default_true(),
             lkm_dir: default_hymofs_lkm_dir(),
             lkm_kmi_override: String::new(),

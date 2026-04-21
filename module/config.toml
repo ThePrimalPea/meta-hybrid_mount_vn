@@ -22,7 +22,6 @@ default_mode = "overlay"
 
 [hymofs]
 enabled = false
-ignore_protocol_mismatch = false
 lkm_autoload = true
 lkm_dir = "/data/adb/modules/hybrid_mount/hymofs_lkm"
 lkm_kmi_override = ""

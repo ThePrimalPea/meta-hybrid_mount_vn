@@ -834,12 +834,8 @@ pub fn check_status() -> HymoFsStatus {
     status
 }
 
-pub fn can_operate(ignore_protocol_mismatch: bool) -> bool {
-    match check_status() {
-        HymoFsStatus::Available => true,
-        HymoFsStatus::KernelTooOld | HymoFsStatus::ModuleTooOld => ignore_protocol_mismatch,
-        HymoFsStatus::NotPresent => false,
-    }
+pub fn can_operate() -> bool {
+    matches!(check_status(), HymoFsStatus::Available)
 }
 
 pub fn clear_rules() -> Result<()> {

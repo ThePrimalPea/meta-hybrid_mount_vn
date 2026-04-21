@@ -142,7 +142,6 @@ Behavior details that matter in practice:
 | Key | Purpose |
 | --- | --- |
 | `hymofs.enabled` | Master switch for HymoFS integration. |
-| `hymofs.ignore_protocol_mismatch` | Allow operation even when userspace/kernel protocol versions differ. |
 | `hymofs.lkm_autoload` | Try to auto-load the HymoFS LKM during startup. |
 | `hymofs.lkm_dir` / `hymofs.lkm_kmi_override` | LKM search directory and optional KMI override. |
 | `hymofs.mirror_path` | Runtime mirror root used by HymoFS rules, default `/dev/hymo_mirror`. |

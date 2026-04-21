@@ -119,10 +119,6 @@ pub enum HymofsCommands {
     Stealth {
         state: ToggleState,
     },
-    #[command(name = "ignore-protocol")]
-    IgnoreProtocol {
-        state: ToggleState,
-    },
     #[command(name = "mount-hide")]
     MountHide {
         state: ToggleState,

@@ -24,7 +24,8 @@ use crate::{
 };
 
 pub fn can_operate(config: &config::Config) -> bool {
-    hymofs::can_operate(config.hymofs.ignore_protocol_mismatch)
+    let _ = config;
+    hymofs::can_operate()
 }
 
 pub fn require_live(config: &config::Config, description: &str) -> Result<()> {

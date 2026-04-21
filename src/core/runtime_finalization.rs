@@ -19,7 +19,6 @@ use anyhow::Result;
 use crate::{
     conf::config::Config,
     core::{module_status, ops::executor::ExecutionResult, runtime_state::RuntimeState},
-    defs,
 };
 
 pub fn finalize(
@@ -35,13 +34,7 @@ pub fn finalize(
         result.hymofs_module_ids.len(),
     );
 
-    let state = RuntimeState::build_from_execution(
-        config,
-        storage_mode,
-        mount_point,
-        result,
-        defs::DAEMON_LOG_FILE.into(),
-    );
+    let state = RuntimeState::build_from_execution(config, storage_mode, mount_point, result);
     if let Err(err) = state.save() {
         crate::scoped_log!(warn, "finalize", "save runtime state failed: {:#}", err);
     }

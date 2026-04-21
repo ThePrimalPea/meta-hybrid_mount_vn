@@ -26,8 +26,7 @@ impl BackendCapabilities {
 
         Self {
             hymofs_status: hymofs::status_name(status).to_string(),
-            hymofs_usable: config.hymofs.enabled
-                && hymofs::can_operate(config.hymofs.ignore_protocol_mismatch),
+            hymofs_usable: config.hymofs.enabled && hymofs::can_operate(),
         }
     }
 

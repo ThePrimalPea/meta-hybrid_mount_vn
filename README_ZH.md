@@ -142,7 +142,6 @@ default_mode = "magic"
 | 字段 | 作用 |
 | --- | --- |
 | `hymofs.enabled` | HymoFS 集成总开关。 |
-| `hymofs.ignore_protocol_mismatch` | 协议版本不一致时是否仍允许继续操作。 |
 | `hymofs.lkm_autoload` | 启动时是否尝试自动加载 HymoFS LKM。 |
 | `hymofs.lkm_dir` / `hymofs.lkm_kmi_override` | LKM 搜索目录与可选 KMI 覆盖。 |
 | `hymofs.mirror_path` | HymoFS 规则使用的 mirror 根目录，默认 `/dev/hymo_mirror`。 |

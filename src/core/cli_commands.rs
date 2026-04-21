@@ -84,9 +84,6 @@ pub fn run(cli: &Cli, command: &Commands) -> Result<()> {
             HymofsCommands::Stealth { state } => {
                 cli_handlers::handle_hymofs_set_stealth(cli, state.enabled())
             }
-            HymofsCommands::IgnoreProtocol { state } => {
-                cli_handlers::handle_hymofs_set_ignore_protocol_mismatch(cli, state.enabled())
-            }
             HymofsCommands::MountHide {
                 state,
                 path_pattern,

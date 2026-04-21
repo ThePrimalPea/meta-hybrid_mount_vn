@@ -52,7 +52,6 @@ pub fn handle_hymofs_status(cli: &Cli) -> Result<()> {
             "snapshot": &runtime_state.hymofs,
             "hymofs_modules": &runtime_state.hymofs_modules,
             "active_mounts": &runtime_state.active_mounts,
-            "log_file": &runtime_state.log_file,
         }
     });
 
@@ -185,19 +184,6 @@ pub fn handle_hymofs_set_stealth(cli: &Cli, enabled: bool) -> Result<()> {
     })?;
     let applied = apply_live_runtime_sync(&config, "set_stealth")?;
     print_config_apply_result(&path, "HymoFS stealth setting", applied);
-    Ok(())
-}
-
-pub fn handle_hymofs_set_ignore_protocol_mismatch(cli: &Cli, enabled: bool) -> Result<()> {
-    let (path, _) = update_config_for_cli(cli, |config| {
-        config.hymofs.ignore_protocol_mismatch = enabled;
-    })?;
-    hymofs::invalidate_status_cache();
-    println!(
-        "HymoFS protocol mismatch policy saved to {}. Ignore mismatch is now {}.",
-        path.display(),
-        if enabled { "enabled" } else { "disabled" }
-    );
     Ok(())
 }
 

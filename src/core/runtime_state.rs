@@ -167,8 +167,6 @@ pub struct RuntimeState {
     pub mount_stats: MountStatistics,
     #[serde(default)]
     pub hymofs: HymoFsRuntimeInfo,
-    #[serde(default = "default_log_file")]
-    pub log_file: PathBuf,
 }
 
 impl RuntimeState {
@@ -182,7 +180,6 @@ impl RuntimeState {
         active_mounts: Vec<String>,
         mount_stats: MountStatistics,
         hymofs: HymoFsRuntimeInfo,
-        log_file: PathBuf,
     ) -> Self {
         let start = SystemTime::now();
 
@@ -210,7 +207,6 @@ impl RuntimeState {
             tmpfs_xattr_supported,
             mount_stats,
             hymofs,
-            log_file,
         }
     }
 
@@ -225,7 +221,6 @@ impl RuntimeState {
         storage_mode: &str,
         mount_point: &Path,
         result: &ExecutionResult,
-        log_file: PathBuf,
     ) -> Self {
         let previous_state = Self::load().unwrap_or_default();
         let hymofs = hymofs::collect_runtime_info(config);
@@ -238,7 +233,6 @@ impl RuntimeState {
             collect_active_mounts(result),
             result.mount_stats.clone(),
             hymofs,
-            log_file,
         );
         state.mount_error_modules = previous_state.mount_error_modules;
         state.mount_error_reasons = previous_state.mount_error_reasons;
@@ -264,10 +258,6 @@ impl RuntimeState {
         let state = serde_json::from_str(&content)?;
         Ok(state)
     }
-}
-
-fn default_log_file() -> PathBuf {
-    PathBuf::from(defs::DAEMON_LOG_FILE)
 }
 
 fn collect_active_mounts(result: &ExecutionResult) -> Vec<String> {
