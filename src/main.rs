@@ -23,8 +23,10 @@ mod utils;
 use anyhow::Result;
 use clap::Parser;
 use conf::cli::Cli;
+#[cfg(feature = "fast-allocator")]
 use mimalloc::MiMalloc;
 
+#[cfg(feature = "fast-allocator")]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
