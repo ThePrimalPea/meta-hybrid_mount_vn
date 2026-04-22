@@ -19,7 +19,7 @@ use anyhow::Result;
 use crate::{
     conf::config,
     core::{inventory::Module, runtime_state::MountStatistics},
-    mount::magic_mount,
+    mount::magic_mount::{self, MagicMountOptions},
 };
 
 pub(super) fn mount_magic(
@@ -52,11 +52,13 @@ pub(super) fn mount_magic(
     let (mounted_ids, stats) = magic_mount::magic_mount(
         &magic_ws_path,
         tempdir,
-        &config.mountsource,
-        &config.partitions,
+        MagicMountOptions {
+            mount_source: &config.mountsource,
+            extra_partitions: &config.partitions,
+            use_hymofs,
+            overlay_fallback_enabled: config.enable_overlay_fallback,
+        },
         &selected_modules,
-        use_hymofs,
-        config.enable_overlay_fallback,
         !config.disable_umount,
     )?;
 

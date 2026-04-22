@@ -214,6 +214,13 @@ impl MountContext {
     }
 }
 
+pub struct MagicMountOptions<'a> {
+    pub mount_source: &'a str,
+    pub extra_partitions: &'a [String],
+    pub use_hymofs: bool,
+    pub overlay_fallback_enabled: bool,
+}
+
 struct MagicMount {
     node: Node,
     path: PathBuf,
@@ -536,11 +543,8 @@ impl MagicMount {
 pub fn magic_mount<P>(
     tmp_path: P,
     module_dir: &Path,
-    mount_source: &str,
-    extra_partitions: &[String],
+    options: MagicMountOptions<'_>,
     magic_modules: &[Module],
-    use_hymofs: bool,
-    overlay_fallback_enabled: bool,
     #[cfg(any(target_os = "linux", target_os = "android"))] umount: bool,
     #[cfg(not(any(target_os = "linux", target_os = "android")))] _umount: bool,
 ) -> Result<(Vec<String>, MountStatistics)>
@@ -551,17 +555,24 @@ where
 
     if let Some(root) = collect_module_files(
         module_dir,
-        extra_partitions,
+        options.extra_partitions,
         magic_modules,
-        use_hymofs,
-        overlay_fallback_enabled,
+        options.use_hymofs,
+        options.overlay_fallback_enabled,
     )? {
         crate::scoped_log!(debug, "magic", "collected tree: {:?}", root);
         let tmp_root = tmp_path.as_ref();
         let tmp_dir = tmp_root.join("workdir");
         ensure_dir_exists(&tmp_dir)?;
 
-        mount(mount_source, &tmp_dir, "tmpfs", MountFlags::empty(), None).context("mount tmp")?;
+        mount(
+            options.mount_source,
+            &tmp_dir,
+            "tmpfs",
+            MountFlags::empty(),
+            None,
+        )
+        .context("mount tmp")?;
         mount_change(&tmp_dir, MountPropagationFlags::PRIVATE).context("make tmp private")?;
 
         let ret = MagicMount::new(
