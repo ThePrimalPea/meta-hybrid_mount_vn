@@ -170,9 +170,22 @@ fn mount_ext4_with_repair(img_path: &Path, target: &Path) -> Result<()> {
 }
 
 fn reset_mount_state(target: &Path) -> Result<()> {
-    if nuke::nuke_path(target).is_err() {
+    if let Err(err) = nuke::nuke_path(target) {
         #[cfg(any(target_os = "linux", target_os = "android"))]
-        umount(target, UnmountFlags::DETACH)?;
+        {
+            if let Err(unmount_err) = umount(target, UnmountFlags::DETACH) {
+                return Err(err.context(format!(
+                    "failed to reset mounted ext4 state at {} and failed to detach mount: {:#}",
+                    target.display(),
+                    unmount_err
+                )));
+            }
+        }
+
+        return Err(err.context(format!(
+            "failed to reset mounted ext4 state at {}",
+            target.display()
+        )));
     }
     Ok(())
 }

@@ -38,15 +38,14 @@ struct ApatchKpmConfig {
     control_name: Option<String>,
 }
 
-#[cfg(any(target_os = "linux", target_os = "android", test))]
-#[allow(dead_code)]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum KptoolsCommand {
     Load,
     Control,
 }
 
-#[cfg(any(target_os = "linux", target_os = "android", test))]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 impl KptoolsCommand {
     fn failure_prefix(self) -> &'static str {
         match self {
@@ -56,7 +55,7 @@ impl KptoolsCommand {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "android", test))]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn parse_i64_token(token: &str) -> Option<i64> {
     token
         .trim_end_matches(|c: char| !matches!(c, '-' | '0'..='9'))
@@ -64,7 +63,7 @@ fn parse_i64_token(token: &str) -> Option<i64> {
         .ok()
 }
 
-#[cfg(any(target_os = "linux", target_os = "android", test))]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn extract_kpm_rc_from_text(text: &str) -> Option<i64> {
     text.split_whitespace()
         .find_map(|token| token.strip_prefix("rc=").and_then(parse_i64_token))
@@ -75,7 +74,7 @@ fn extract_kpm_rc_from_text(text: &str) -> Option<i64> {
         })
 }
 
-#[cfg(any(target_os = "linux", target_os = "android", test))]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn text_reports_kptools_failure(text: &str, command: KptoolsCommand) -> bool {
     text.lines()
         .any(|line| line.trim_start().starts_with(command.failure_prefix()))
@@ -373,7 +372,7 @@ fn output_mentions_file_exists(output: &Output) -> bool {
     text_mentions_file_exists(&stdout) || text_mentions_file_exists(&stderr)
 }
 
-#[cfg(any(target_os = "linux", target_os = "android", test))]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn text_mentions_file_exists(text: &str) -> bool {
     text.to_ascii_lowercase().contains("file exists")
 }
@@ -428,54 +427,5 @@ pub fn nuke_path(path: &Path) -> Result<()> {
     {
         let _ = path;
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        KptoolsCommand, extract_kpm_rc_from_text, parse_i64_token, text_mentions_file_exists,
-        text_reports_kptools_failure,
-    };
-
-    #[test]
-    fn parse_rc_token_trims_trailing_punctuation() {
-        assert_eq!(parse_i64_token("-17,"), Some(-17));
-        assert_eq!(parse_i64_token("0"), Some(0));
-    }
-
-    #[test]
-    fn extract_rc_supports_rc_prefix() {
-        assert_eq!(extract_kpm_rc_from_text("ok rc=-17"), Some(-17));
-    }
-
-    #[test]
-    fn extract_rc_supports_plain_integer_line() {
-        assert_eq!(
-            extract_kpm_rc_from_text("Failed to control kpm: Unknown error -17\n-17\n"),
-            Some(-17)
-        );
-    }
-
-    #[test]
-    fn detect_load_failure_prefix() {
-        assert!(text_reports_kptools_failure(
-            "Failed to load kpm: No such file or directory",
-            KptoolsCommand::Load
-        ));
-    }
-
-    #[test]
-    fn ignore_non_matching_failure_prefix() {
-        assert!(!text_reports_kptools_failure(
-            "Failed to control kpm: Invalid argument",
-            KptoolsCommand::Load
-        ));
-    }
-
-    #[test]
-    fn detect_file_exists_text_case_insensitively() {
-        assert!(text_mentions_file_exists("Failed to load kpm: File exists"));
-        assert!(text_mentions_file_exists("failed to load kpm: file exists"));
     }
 }

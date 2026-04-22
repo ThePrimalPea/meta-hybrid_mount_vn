@@ -204,6 +204,14 @@ fn wrap_with_module_context(err: anyhow::Error, node: &Node) -> anyhow::Error {
 #[derive(Debug, Default)]
 struct MountContext {
     stats: MountStatistics,
+    failed_module_ids: HashSet<String>,
+}
+
+impl MountContext {
+    fn record_failed_node(&mut self, node: &Node) {
+        self.stats.record_failed();
+        self.failed_module_ids.extend(infer_module_ids(node));
+    }
 }
 
 struct MagicMount {
@@ -415,7 +423,7 @@ impl MagicMount {
                     name,
                     e
                 );
-                context.stats.record_failed();
+                context.record_failed_node(node);
             }
         }
 
@@ -513,7 +521,11 @@ impl MagicMount {
                     name,
                     e
                 );
-                context.stats.record_failed();
+                if let Some(node) = failed_node.as_ref() {
+                    context.record_failed_node(node);
+                } else {
+                    context.stats.record_failed();
+                }
             }
         }
 
@@ -528,17 +540,22 @@ pub fn magic_mount<P>(
     extra_partitions: &[String],
     magic_modules: &[Module],
     use_hymofs: bool,
+    overlay_fallback_enabled: bool,
     #[cfg(any(target_os = "linux", target_os = "android"))] umount: bool,
     #[cfg(not(any(target_os = "linux", target_os = "android")))] _umount: bool,
-) -> Result<MountStatistics>
+) -> Result<(Vec<String>, MountStatistics)>
 where
     P: AsRef<Path>,
 {
     let mut context = MountContext::default();
 
-    if let Some(root) =
-        collect_module_files(module_dir, extra_partitions, magic_modules, use_hymofs)?
-    {
+    if let Some(root) = collect_module_files(
+        module_dir,
+        extra_partitions,
+        magic_modules,
+        use_hymofs,
+        overlay_fallback_enabled,
+    )? {
         crate::scoped_log!(debug, "magic", "collected tree: {:?}", root);
         let tmp_root = tmp_path.as_ref();
         let tmp_dir = tmp_root.join("workdir");
@@ -558,6 +575,9 @@ where
         .do_mount(&mut context)
         .map_err(|e| wrap_with_module_context(e, &root));
 
+        let mut mounted_module_ids = infer_module_ids(&root);
+        mounted_module_ids.retain(|id| !context.failed_module_ids.contains(id));
+
         if let Err(e) = unmount(&tmp_dir, UnmountFlags::DETACH) {
             crate::scoped_log!(
                 error,
@@ -572,15 +592,17 @@ where
         crate::scoped_log!(
             info,
             "magic",
-            "complete: mounted_files={}, mounted_symlinks={}, ignored_files={}",
+            "complete: mounted_modules={}, failed_modules={}, mounted_files={}, mounted_symlinks={}, ignored_files={}",
+            mounted_module_ids.len(),
+            context.failed_module_ids.len(),
             context.stats.files_mounted,
             context.stats.symlinks_created,
             context.stats.ignored_entries
         );
 
-        ret.map(|()| context.stats)
+        ret.map(|()| (mounted_module_ids, context.stats))
     } else {
         crate::scoped_log!(info, "magic", "skip: reason=no_modules_to_mount");
-        Ok(context.stats)
+        Ok((Vec::new(), context.stats))
     }
 }

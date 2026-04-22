@@ -49,22 +49,24 @@ pub(super) fn mount_magic(
         .cloned()
         .collect();
 
-    let stats = magic_mount::magic_mount(
+    let (mounted_ids, stats) = magic_mount::magic_mount(
         &magic_ws_path,
         tempdir,
         &config.mountsource,
         &config.partitions,
         &selected_modules,
         use_hymofs,
+        config.enable_overlay_fallback,
         !config.disable_umount,
     )?;
 
     crate::scoped_log!(
         debug,
         "executor:magic",
-        "complete: module_count={}",
-        ids.len()
+        "complete: requested_modules={}, mounted_modules={}",
+        ids.len(),
+        mounted_ids.len()
     );
 
-    Ok((ids.to_vec(), stats))
+    Ok((mounted_ids, stats))
 }

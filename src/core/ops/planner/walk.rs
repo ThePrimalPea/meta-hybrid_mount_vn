@@ -43,6 +43,7 @@ impl BackendPresence {
 
 pub(super) struct PlannerContext {
     use_hymofs: bool,
+    overlay_fallback_enabled: bool,
     target_cache: HashMap<PathBuf, PathBuf>,
     overlay_groups: BTreeMap<PathBuf, (String, Vec<PathBuf>)>,
     sensitive_partitions: HashSet<String>,
@@ -53,6 +54,7 @@ impl PlannerContext {
     pub(super) fn new(config: &config::Config, use_hymofs: bool) -> Self {
         Self {
             use_hymofs,
+            overlay_fallback_enabled: config.enable_overlay_fallback,
             target_cache: HashMap::new(),
             overlay_groups: BTreeMap::new(),
             sensitive_partitions: defs::SENSITIVE_PARTITIONS
@@ -189,6 +191,13 @@ impl PlannerContext {
             {
                 presence.magic = true;
             }
+            if matches!(effective_mode, MountMode::Overlay)
+                && direct_non_dir_entries
+                && has_descendant_rules
+                && self.overlay_fallback_enabled
+            {
+                presence.magic = true;
+            }
             if matches!(effective_mode, MountMode::Hymofs)
                 && (direct_non_dir_entries || !child_dirs.is_empty())
             {
@@ -202,9 +211,14 @@ impl PlannerContext {
                 crate::scoped_log!(
                     warn,
                     "planner",
-                    "mixed overlay subtree requires split: module={}, relative={}, behavior=directory_only",
+                    "mixed overlay subtree requires split: module={}, relative={}, behavior={}",
                     module.id,
-                    relative_path.display()
+                    relative_path.display(),
+                    if self.overlay_fallback_enabled {
+                        "direct_files_magic_fallback"
+                    } else {
+                        "direct_files_unhandled_overlay_fallback_disabled"
+                    }
                 );
             }
 
