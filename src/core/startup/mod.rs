@@ -17,12 +17,14 @@ mod recovery;
 use anyhow::{Context, Result};
 
 use crate::{
-    conf::{cli::Cli, config::Config, store::ConfigSession},
+    conf::{cli::Cli, config::Config, loader, store::ConfigOverrides},
     defs, sys, utils,
 };
 
 fn load_final_config(cli: &Cli) -> Result<Config> {
-    Ok(ConfigSession::load_from_cli(cli)?.effective())
+    let mut config = loader::load_startup_config(cli)?;
+    ConfigOverrides::from_cli(cli).apply_to(&mut config);
+    Ok(config)
 }
 
 pub fn run(cli: &Cli) -> Result<()> {
