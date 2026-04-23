@@ -64,25 +64,17 @@ struct CargoConfig {
 enum Arch {
     #[value(name = "arm64")]
     Arm64,
-    #[value(name = "arm")]
-    Arm,
-    #[value(name = "x86_64")]
-    X86_64,
 }
 
 impl Arch {
     fn target(&self) -> &'static str {
         match self {
             Arch::Arm64 => "arm64-v8a",
-            Arch::Arm => "armeabi-v7a",
-            Arch::X86_64 => "x86_64",
         }
     }
     fn android_abi(&self) -> &'static str {
         match self {
             Arch::Arm64 => "aarch64-linux-android",
-            Arch::Arm => "armv7-linux-androideabi",
-            Arch::X86_64 => "x86_64-linux-android",
         }
     }
 }
@@ -139,7 +131,7 @@ fn main() -> Result<()> {
                 let archs = if let Some(selected) = arch {
                     vec![selected]
                 } else {
-                    vec![Arch::Arm64, Arch::Arm, Arch::X86_64]
+                    vec![Arch::Arm64]
                 };
                 (release, release, archs)
             };

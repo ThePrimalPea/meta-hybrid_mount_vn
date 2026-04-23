@@ -25,14 +25,8 @@ case "$ARCH" in
 "arm64")
   ABI="arm64-v8a"
   ;;
-"x64")
-  ABI="x86_64"
-  ;;
-"arm")
-  ABI="armeabi-v7a"
-  ;;
 *)
-  abort "! Unsupported architecture: $ARCH"
+  abort "! Unsupported architecture: $ARCH (Hybrid Mount now supports arm64 only)"
   ;;
 esac
 ui_print "- Device Architecture: $ARCH ($ABI)"

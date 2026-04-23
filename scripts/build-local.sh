@@ -33,9 +33,9 @@ Usage: ./scripts/build-local.sh [options]
 
 Options:
   -r, --release               Build a release package
-  -a, --arch <arm64|arm|x86_64>
+  -a, --arch <arm64>
                               Build a single Android ABI (default: arm64)
-      --all-arch              Build all supported Android ABIs
+      --all-arch              Build all supported Android ABIs (currently arm64 only)
       --skip-webui            Reuse the current WebUI assets
       --lint                  Run cargo xtask lint before building
       --hymofs-lkm-dir <DIR>  Stage .ko files from DIR into hymofs_lkm/
@@ -111,7 +111,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$ARCH" in
-arm64 | arm | x86_64) ;;
+arm64) ;;
 *)
 	echo "error: unsupported arch: $ARCH" >&2
 	exit 1
