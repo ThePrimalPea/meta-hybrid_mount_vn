@@ -23,7 +23,6 @@ pub const MODULES_IMG_FILE: &str = concatcp!(HYBRID_MOUNT_DIR, "/modules.img");
 pub const HYMOFS_IMG_FILE: &str = concatcp!(HYBRID_MOUNT_DIR, "/hymofs.img");
 pub const RUN_DIR: &str = concatcp!(HYBRID_MOUNT_DIR, "/run/");
 pub const STATE_FILE: &str = concatcp!(RUN_DIR, "daemon_state.json");
-pub const DAEMON_LOG_FILE: &str = concatcp!(HYBRID_MOUNT_DIR, "/daemon.log");
 pub const SYSTEM_RW_DIR: &str = concatcp!(HYBRID_MOUNT_DIR, "/rw");
 pub const CONFIG_FILE: &str = concatcp!(HYBRID_MOUNT_DIR, "/config.toml");
 pub const USER_HIDE_RULES_FILE: &str = concatcp!(HYBRID_MOUNT_DIR, "/user_hide_rules.json");

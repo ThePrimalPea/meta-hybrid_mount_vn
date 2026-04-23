@@ -24,10 +24,6 @@ mod utils;
 use anyhow::Result;
 use clap::Parser;
 use conf::cli::Cli;
-use mimalloc::MiMalloc;
-
-#[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
 
 fn main() -> Result<()> {
     if matches!(std::env::var("KSU_LATE_LOAD").as_deref(), Ok("1")) {
