@@ -96,14 +96,14 @@ struct ModuleInfo {
 }
 
 impl ModuleInfo {
-    fn new(module: discovery::Module, mounted_set: &HashSet<&str>) -> Self {
+    fn build(module: discovery::Module, is_mounted: bool, enabled: bool) -> Self {
         let prop = normalize_module_prop(
             &module.id,
             ModuleProp::from(module.source_path.join("module.prop").as_path()),
         );
 
         Self {
-            is_mounted: mounted_set.contains(module.id.as_str()),
+            is_mounted,
             id: module.id,
             name: prop.name,
             version: prop.version,
@@ -112,21 +112,33 @@ impl ModuleInfo {
             mode: module.rules.default_mode.as_module_mode_label().to_string(),
             strategy: module.rules.default_mode.as_strategy().to_string(),
             path: module.source_path.display().to_string(),
-            enabled: true,
+            enabled,
             rules: module.rules,
         }
+    }
+
+    fn new(module: discovery::Module, mounted_set: &HashSet<&str>) -> Self {
+        let is_mounted = mounted_set.contains(module.id.as_str());
+        Self::build(module, is_mounted, true)
+    }
+
+    fn blocked(module: discovery::Module) -> Self {
+        Self::build(module, false, false)
     }
 }
 
 pub fn print_list(config: &config::Config) -> Result<()> {
     let modules = discovery::scan(&config.moduledir, config)?;
+    let blocked_modules = discovery::scan_blocked(&config.moduledir, config)?;
     let runtime_state = RuntimeState::load().unwrap_or_default();
     let mounted_ids = runtime_state.mounted_module_ids();
 
-    let infos: Vec<ModuleInfo> = modules
+    let mut infos: Vec<ModuleInfo> = modules
         .into_iter()
         .map(|module| ModuleInfo::new(module, &mounted_ids))
         .collect();
+    infos.extend(blocked_modules.into_iter().map(ModuleInfo::blocked));
+    infos.sort_by(|a, b| a.id.cmp(&b.id));
 
     println!("{}", serde_json::to_string(&infos)?);
 

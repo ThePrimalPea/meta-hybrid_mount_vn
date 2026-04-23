@@ -87,7 +87,13 @@ pub struct Module {
     pub rules: ModuleRules,
 }
 
-pub fn scan(source_dir: &Path, cfg: &config::Config) -> Result<Vec<Module>> {
+#[derive(Clone, Copy)]
+enum ScanMode {
+    ActiveOnly,
+    BlockedOnly,
+}
+
+fn scan_with_mode(source_dir: &Path, cfg: &config::Config, mode: ScanMode) -> Result<Vec<Module>> {
     if !source_dir.exists() {
         return Ok(Vec::new());
     }
@@ -114,16 +120,22 @@ pub fn scan(source_dir: &Path, cfg: &config::Config) -> Result<Vec<Module>> {
         }
 
         let block_markers = inventory::mount_block_markers(&path);
-        if !block_markers.is_empty() {
-            skipped_blocked += 1;
-            crate::scoped_log!(
-                debug,
-                "scanner",
-                "skip: module={}, reason=block_marker, markers={}",
-                id,
-                block_markers.join(",")
-            );
-            continue;
+        match (mode, block_markers.is_empty()) {
+            (ScanMode::ActiveOnly, false) => {
+                skipped_blocked += 1;
+                crate::scoped_log!(
+                    debug,
+                    "scanner",
+                    "skip: module={}, reason=block_marker, markers={}",
+                    id,
+                    block_markers.join(",")
+                );
+                continue;
+            }
+            (ScanMode::BlockedOnly, true) => {
+                continue;
+            }
+            _ => {}
         }
 
         let rules = load_module_rules(&path, &id, cfg);
@@ -135,17 +147,35 @@ pub fn scan(source_dir: &Path, cfg: &config::Config) -> Result<Vec<Module>> {
         });
     }
 
-    crate::scoped_log!(
-        info,
-        "scanner",
-        "complete: total_dirs={}, active_modules={}, skipped_reserved={}, skipped_blocked={}",
-        modules.len() + skipped_reserved + skipped_blocked,
-        modules.len(),
-        skipped_reserved,
-        skipped_blocked
-    );
+    match mode {
+        ScanMode::ActiveOnly => crate::scoped_log!(
+            info,
+            "scanner",
+            "complete: total_dirs={}, active_modules={}, skipped_reserved={}, skipped_blocked={}",
+            modules.len() + skipped_reserved + skipped_blocked,
+            modules.len(),
+            skipped_reserved,
+            skipped_blocked
+        ),
+        ScanMode::BlockedOnly => crate::scoped_log!(
+            debug,
+            "scanner",
+            "blocked list complete: total_dirs={}, blocked_modules={}, skipped_reserved={}",
+            modules.len() + skipped_reserved,
+            modules.len(),
+            skipped_reserved
+        ),
+    };
 
     modules.sort_by(|a, b| a.id.cmp(&b.id));
 
     Ok(modules)
+}
+
+pub fn scan(source_dir: &Path, cfg: &config::Config) -> Result<Vec<Module>> {
+    scan_with_mode(source_dir, cfg, ScanMode::ActiveOnly)
+}
+
+pub fn scan_blocked(source_dir: &Path, cfg: &config::Config) -> Result<Vec<Module>> {
+    scan_with_mode(source_dir, cfg, ScanMode::BlockedOnly)
 }

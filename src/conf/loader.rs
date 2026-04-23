@@ -12,9 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::path::Path;
+
 use anyhow::{Context, Result};
 
-use crate::conf::{cli::Cli, config::Config};
+use crate::{
+    conf::{cli::Cli, config::Config},
+    defs,
+};
 
 pub fn load_config(cli: &Cli) -> Result<Config> {
     if let Some(config_path) = &cli.config {
@@ -26,25 +31,15 @@ pub fn load_config(cli: &Cli) -> Result<Config> {
         });
     }
 
-    match Config::load_default() {
-        Ok(config) => Ok(config),
-        Err(e) => {
-            let is_not_found = e
-                .root_cause()
-                .downcast_ref::<std::io::Error>()
-                .map(|io_err| io_err.kind() == std::io::ErrorKind::NotFound)
-                .unwrap_or(false);
-
-            if !is_not_found {
-                crate::scoped_log!(
-                    warn,
-                    "config",
-                    "load_default failed, fallback=defaults: {:#}",
-                    e
-                );
-            }
-
-            Ok(Config::default())
-        }
+    let default_path = Path::new(defs::CONFIG_FILE);
+    if !default_path.exists() {
+        return Ok(Config::default());
     }
+
+    Config::load_optional_from_file(default_path).with_context(|| {
+        format!(
+            "Failed to load config from default path: {}",
+            default_path.display()
+        )
+    })
 }
