@@ -51,7 +51,9 @@ pub fn extract_module_id(path: &Path) -> Option<String> {
     let mut current = path;
     loop {
         if current.join("module.prop").exists() {
-            return current.file_name().map(|s| s.to_string_lossy().into_owned());
+            return current
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned());
         }
         match current.parent() {
             Some(p) => current = p,
