@@ -92,7 +92,15 @@ pub(super) fn mount_overlay(
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
     if !config.disable_umount {
-        let _ = umount_mgr::send_umountable(&op.target);
+        if let Err(e) = umount_mgr::send_umountable(&op.target) {
+            crate::scoped_log!(
+                warn,
+                "overlay",
+                "failed to register umountable at {}: {:#}",
+                op.target,
+                e
+            );
+        }
     }
 
     Ok(involved_modules)

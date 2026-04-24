@@ -76,6 +76,30 @@ pub fn handle_save_module_rules(cli: &Cli, module_id: &str, payload: &str) -> Re
     Ok(())
 }
 
+pub fn handle_save_all_module_rules(cli: &Cli, payload: &str) -> Result<()> {
+    use std::collections::HashMap;
+
+    let all_rules: HashMap<String, config::ModuleRules> =
+        decode_hex_json(payload, "all module rules")?;
+    let mut session = load_config_session(cli)?;
+
+    for (module_id, rules) in &all_rules {
+        utils::validate_module_id(module_id)?;
+        session.save_module_rules(module_id, rules.clone());
+    }
+
+    let path = session
+        .save()
+        .context("Failed to update config file with batch rules")?;
+
+    println!(
+        "Batch saved {} module rules into {}",
+        all_rules.len(),
+        path.display()
+    );
+    Ok(())
+}
+
 pub fn handle_modules(cli: &Cli) -> Result<()> {
     let config = load_effective_config(cli)?;
     modules::print_list(&config).context("Failed to list modules")

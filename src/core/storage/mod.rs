@@ -101,7 +101,15 @@ pub fn setup_with_sources(
 fn reset_image_files(img_path: &Path) -> Result<()> {
     let pattern = format!("{}*", img_path.display());
     for path in glob::glob(&pattern)?.flatten() {
-        let _ = fs::remove_file(path);
+        if let Err(e) = fs::remove_file(&path) {
+            crate::scoped_log!(
+                warn,
+                "storage",
+                "failed to remove stale image file {}: {:#}",
+                path.display(),
+                e
+            );
+        }
     }
     Ok(())
 }
@@ -114,17 +122,41 @@ fn detach_existing_mount(mnt_base: &Path) {
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
     if is_mounted(mnt_base) {
-        let _ = umount(mnt_base, UnmountFlags::DETACH);
+        if let Err(e) = umount(mnt_base, UnmountFlags::DETACH) {
+            crate::scoped_log!(
+                warn,
+                "storage",
+                "failed to detach existing mount at {}: {:#}",
+                mnt_base.display(),
+                e
+            );
+        }
     }
 }
 
 fn finalize_mount_setup(path: &Path, disable_umount: bool) {
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    let _ = mount_change(path, MountPropagationFlags::PRIVATE);
+    if let Err(e) = mount_change(path, MountPropagationFlags::PRIVATE) {
+        crate::scoped_log!(
+            warn,
+            "storage",
+            "failed to set mount propagation to PRIVATE at {}: {:#}",
+            path.display(),
+            e
+        );
+    }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
     if !disable_umount {
-        let _ = send_umountable(path);
+        if let Err(e) = send_umountable(path) {
+            crate::scoped_log!(
+                warn,
+                "storage",
+                "failed to register umountable at {}: {:#}",
+                path.display(),
+                e
+            );
+        }
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
@@ -143,7 +175,15 @@ fn try_setup_tmpfs(target: &Path, mount_source: &str) -> Result<bool> {
                     target.display()
                 );
                 #[cfg(any(target_os = "linux", target_os = "android"))]
-                let _ = umount(target, UnmountFlags::DETACH);
+                if let Err(e) = umount(target, UnmountFlags::DETACH) {
+                    crate::scoped_log!(
+                        warn,
+                        "storage",
+                        "failed to umount tmpfs at {} after xattr check: {:#}",
+                        target.display(),
+                        e
+                    );
+                }
             }
             Err(err) => {
                 crate::scoped_log!(
@@ -154,7 +194,15 @@ fn try_setup_tmpfs(target: &Path, mount_source: &str) -> Result<bool> {
                     err
                 );
                 #[cfg(any(target_os = "linux", target_os = "android"))]
-                let _ = umount(target, UnmountFlags::DETACH);
+                if let Err(e) = umount(target, UnmountFlags::DETACH) {
+                    crate::scoped_log!(
+                        warn,
+                        "storage",
+                        "failed to umount tmpfs at {} after xattr probe failure: {:#}",
+                        target.display(),
+                        e
+                    );
+                }
             }
         },
         Err(err) => {

@@ -158,6 +158,7 @@ pub fn build_system_payload(config: &Config, state: &RuntimeState) -> Value {
     };
 
     json!({
+        "api_version": 1,
         "kernel": read_kernel_release().unwrap_or_else(|_| "Unknown".to_string()),
         "selinux": read_selinux_status().unwrap_or_else(|_| "Unknown".to_string()),
         "mount_base": state.mount_point,

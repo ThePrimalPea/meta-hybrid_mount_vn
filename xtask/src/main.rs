@@ -573,6 +573,7 @@ export const RUST_PATHS = {{
   IMAGE_MNT: "/data/adb/hybrid-mount/mnt",
   DAEMON_STATE: "/data/adb/hybrid-mount/run/daemon_state.json",
   DAEMON_LOG: "/data/adb/hybrid-mount/daemon.log",
+  BINARY: "/data/adb/modules/hybrid_mount/hybrid-mount",
 }} as const;
 "#
     );

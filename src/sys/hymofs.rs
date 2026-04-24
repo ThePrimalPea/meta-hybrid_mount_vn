@@ -726,6 +726,12 @@ fn fetch_anon_fd() -> Result<c_int> {
     }
 
     if fd < 0 {
+        crate::scoped_log!(
+            warn,
+            "hymofs",
+            "failed to obtain HymoFS anonymous fd after {} retries",
+            WAIT_ATTEMPTS
+        );
         bail!("failed to obtain HymoFS anonymous fd");
     }
 

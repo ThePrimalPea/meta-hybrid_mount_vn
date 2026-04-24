@@ -33,6 +33,9 @@ pub fn run(cli: &Cli, command: &Commands) -> Result<()> {
         Commands::SaveModuleRules { module, payload } => {
             cli_handlers::handle_save_module_rules(cli, module, payload)
         }
+        Commands::SaveAllModuleRules { payload } => {
+            cli_handlers::handle_save_all_module_rules(cli, payload)
+        }
         Commands::Modules => cli_handlers::handle_modules(cli),
         Commands::State => cli_handlers::handle_state(),
         Commands::Logs { lines } => cli_handlers::handle_logs(*lines),

@@ -47,7 +47,15 @@ pub(super) fn setup_ext4_image(
     fs::File::create(img_path)?.set_len(grow_size)?;
     format_ext4_image(img_path)?;
     check_image(img_path)?;
-    let _ = lsetfilecon(img_path, "u:object_r:ksu_file:s0");
+    if let Err(e) = lsetfilecon(img_path, "u:object_r:ksu_file:s0") {
+        crate::scoped_log!(
+            warn,
+            "storage",
+            "selinux context set failed: path={}, error={:#}",
+            img_path.display(),
+            e
+        );
+    }
     ensure_dir_exists(target)?;
 
     mount_ext4_with_repair(img_path, target)?;

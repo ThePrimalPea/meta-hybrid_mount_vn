@@ -62,7 +62,7 @@ loopdev = { git = "https://github.com/Hybrid-Mount/loopdev.git", version = "0.5.
 android_logger = "0.15"
 
 [profile.release]
-overflow-checks = false
+overflow-checks = true
 codegen-units = 1
 lto = "fat"
 opt-level = 3
