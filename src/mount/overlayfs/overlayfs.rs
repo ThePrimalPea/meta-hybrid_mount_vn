@@ -340,14 +340,23 @@ pub fn mount_overlay(
     mount_source: &str,
 ) -> Result<()> {
     crate::scoped_log!(info, "overlayfs", "mount root: target={}", root);
+    // Restore original CWD on exit — chdir is a process-global side effect.
+    let old_cwd = std::env::current_dir().ok();
     std::env::set_current_dir(root).with_context(|| format!("failed to chdir to {root}"))?;
     let stock_root = ".";
 
     let root_path = Path::new(root);
     let mount_seq = collect_child_mount_points(root_path)?;
 
-    mount_overlayfs(module_roots, root, upperdir, workdir, root, mount_source)
-        .with_context(|| "mount overlayfs for root failed")?;
+    let root_result = mount_overlayfs(module_roots, root, upperdir, workdir, root, mount_source)
+        .with_context(|| "mount overlayfs for root failed");
+    if let Err(e) = root_result {
+        if let Some(cwd) = old_cwd {
+            std::env::set_current_dir(&cwd).ok();
+        }
+        return Err(e);
+    }
+
     for mount_point in &mount_seq {
         let relative = mount_point.replacen(root, "", 1);
         let stock_root: String = format!("{stock_root}{relative}");
@@ -369,8 +378,14 @@ pub fn mount_overlay(
                 e
             );
             umount_dir(root).with_context(|| format!("failed to revert {root}"))?;
+            if let Some(cwd) = old_cwd {
+                std::env::set_current_dir(&cwd).ok();
+            }
             bail!(e);
         }
+    }
+    if let Some(cwd) = old_cwd {
+        std::env::set_current_dir(&cwd).ok();
     }
     Ok(())
 }

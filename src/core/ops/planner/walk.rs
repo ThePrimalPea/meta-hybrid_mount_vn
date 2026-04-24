@@ -259,6 +259,20 @@ impl PlannerContext {
             };
 
             for (sub_name, sub_path) in child_dirs {
+                if sub_name.as_encoded_bytes().is_empty()
+                    || sub_name.as_encoded_bytes().contains(&b'/')
+                    || sub_name == ".."
+                    || sub_name == "."
+                {
+                    crate::scoped_log!(
+                        warn,
+                        "planner",
+                        "skip suspicious child dir name: module={}, path={:?}",
+                        module.id,
+                        sub_name
+                    );
+                    continue;
+                }
                 queue.push_back(ProcessingItem {
                     module_source: sub_path,
                     system_target: resolved_target.join(&sub_name),

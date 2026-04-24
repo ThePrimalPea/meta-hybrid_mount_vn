@@ -48,8 +48,9 @@ pub fn validate_module_id(module_id: &str) -> Result<()> {
 }
 
 pub fn extract_module_id(path: &Path) -> Option<String> {
+    const MAX_DEPTH: usize = 64;
     let mut current = path;
-    loop {
+    for _ in 0..MAX_DEPTH {
         if current.join("module.prop").exists() {
             return current
                 .file_name()
@@ -64,4 +65,58 @@ pub fn extract_module_id(path: &Path) -> Option<String> {
     path.parent()
         .and_then(|p| p.file_name())
         .map(|s| s.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::TempDir;
+
+    use super::*;
+
+    #[test]
+    fn valid_module_ids() {
+        assert!(validate_module_id("MyModule").is_ok());
+        assert!(validate_module_id("ab").is_ok());
+        assert!(validate_module_id("a1_b.c-d").is_ok());
+        assert!(validate_module_id("ABC123").is_ok());
+    }
+
+    #[test]
+    fn invalid_module_ids() {
+        assert!(validate_module_id("").is_err());
+        assert!(validate_module_id("1abc").is_err());
+        assert!(validate_module_id("-abc").is_err());
+        assert!(validate_module_id("ab/cd").is_err());
+        assert!(validate_module_id("ab cd").is_err());
+        assert!(validate_module_id("ab@cd").is_err());
+    }
+
+    #[test]
+    fn extract_from_module_prop() {
+        let tmp = TempDir::new().unwrap();
+        let module_dir = tmp.path().join("my_module");
+        fs::create_dir(&module_dir).unwrap();
+        fs::write(module_dir.join("module.prop"), "").unwrap();
+
+        let id = extract_module_id(&module_dir.join("system/app"));
+        assert_eq!(id.as_deref(), Some("my_module"));
+    }
+
+    #[test]
+    fn extract_fallback_to_parent() {
+        let tmp = TempDir::new().unwrap();
+        let module_dir = tmp.path().join("fallback_mod");
+        fs::create_dir_all(module_dir.join("sub/dir")).unwrap();
+        // no module.prop anywhere — falls back to path's parent name
+        let id = extract_module_id(&module_dir.join("sub/dir/leaf"));
+        assert_eq!(id.as_deref(), Some("dir"));
+    }
+
+    #[test]
+    fn extract_at_root_returns_none() {
+        let id = extract_module_id(Path::new("/"));
+        assert_eq!(id, None);
+    }
 }

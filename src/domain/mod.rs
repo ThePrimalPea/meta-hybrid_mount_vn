@@ -97,3 +97,78 @@ impl ModuleRules {
         self.default_mode
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_rules(default_mode: MountMode, paths: &[(&str, MountMode)]) -> ModuleRules {
+        ModuleRules {
+            default_mode,
+            paths: paths.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+        }
+    }
+
+    #[test]
+    fn exact_match_wins() {
+        let rules = make_rules(MountMode::Overlay, &[("system", MountMode::Magic)]);
+        assert_eq!(rules.get_mode("system"), MountMode::Magic);
+    }
+
+    #[test]
+    fn prefix_match_wins() {
+        let rules = make_rules(MountMode::Overlay, &[("system", MountMode::Magic)]);
+        assert_eq!(rules.get_mode("system/app"), MountMode::Magic);
+    }
+
+    #[test]
+    fn prefix_not_partial_word() {
+        let rules = make_rules(MountMode::Overlay, &[("sys", MountMode::Magic)]);
+        // "system" starts with "sys" but "sys" is not a path component prefix
+        assert_eq!(rules.get_mode("system"), MountMode::Overlay);
+    }
+
+    #[test]
+    fn longest_match_wins() {
+        let rules = make_rules(
+            MountMode::Overlay,
+            &[
+                ("system", MountMode::Magic),
+                ("system/app", MountMode::Hymofs),
+            ],
+        );
+        assert_eq!(rules.get_mode("system/app/foo"), MountMode::Hymofs);
+        assert_eq!(rules.get_mode("system/priv-app"), MountMode::Magic);
+    }
+
+    #[test]
+    fn default_mode_fallback() {
+        let rules = make_rules(MountMode::Ignore, &[]);
+        assert_eq!(rules.get_mode("any/path"), MountMode::Ignore);
+    }
+
+    #[test]
+    fn empty_rules_returns_default() {
+        let rules = make_rules(MountMode::Hymofs, &[]);
+        assert_eq!(rules.get_mode("system"), MountMode::Hymofs);
+    }
+
+    #[test]
+    fn exact_and_prefix_same_len_exact_wins() {
+        let rules = make_rules(
+            MountMode::Overlay,
+            &[
+                ("sys", MountMode::Magic),
+                ("sys", MountMode::Hymofs), // later entry overwrites in HashMap
+            ],
+        );
+        assert_eq!(rules.get_mode("sys"), MountMode::Hymofs);
+    }
+
+    #[test]
+    fn root_slash_path_not_matched_as_prefix() {
+        let rules = make_rules(MountMode::Overlay, &[("system/", MountMode::Magic)]);
+        // "system" is not a prefix match for key "system/" because there's no trailing slash
+        assert_eq!(rules.get_mode("system"), MountMode::Overlay);
+    }
+}

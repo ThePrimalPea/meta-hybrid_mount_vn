@@ -190,10 +190,11 @@ fn generate_with_root(
         }
 
         layers.sort_by_cached_key(|path| {
-            let module_id = utils::extract_module_id(path).unwrap_or_default();
+            let module_id = utils::extract_module_id(path).filter(|id| !id.is_empty());
             (
-                module_rank
-                    .get(module_id.as_str())
+                module_id
+                    .as_deref()
+                    .and_then(|id| module_rank.get(id))
                     .copied()
                     .unwrap_or(usize::MAX),
                 path.clone(),

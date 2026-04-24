@@ -309,16 +309,17 @@ impl MagicMount {
         );
 
         mount_bind(module_path, target).with_context(|| {
-            #[cfg(any(target_os = "linux", target_os = "android"))]
-            if self.umount {
-                let _ = send_umountable(target);
-            }
             format!(
                 "mount module file {} -> {}",
                 module_path.display(),
                 self.work_dir_path.display(),
             )
         })?;
+
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        if self.umount {
+            let _ = send_umountable(target);
+        }
 
         if let Err(e) = mount_remount(target, MountFlags::RDONLY | MountFlags::BIND, "") {
             crate::scoped_log!(
@@ -487,13 +488,14 @@ impl MagicMount {
     fn mount_path(&mut self, has_tmpfs: bool, context: &mut MountContext) -> Result<()> {
         for entry in self.path.read_dir()?.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
-            let mut failed_node: Option<Node> = None;
+            let mut failed_module_ids: Option<Vec<String>> = None;
             let result = {
                 if let Some(node) = self.node.children.remove(&name) {
                     if node.skip {
                         continue;
                     }
-                    failed_node = Some(node.clone());
+                    // pre-compute module ids before the node is consumed
+                    failed_module_ids = Some(infer_module_ids(&node));
 
                     Self::new(
                         &node,
@@ -515,8 +517,10 @@ impl MagicMount {
 
             if let Err(e) = result {
                 if has_tmpfs {
-                    if let Some(node) = failed_node.as_ref() {
-                        return Err(wrap_with_module_context(e, node));
+                    if let Some(ids) = failed_module_ids
+                        && !ids.is_empty()
+                    {
+                        return Err(MagicMountModuleFailure::new(ids, e).into());
                     }
                     return Err(e);
                 }
@@ -528,8 +532,9 @@ impl MagicMount {
                     name,
                     e
                 );
-                if let Some(node) = failed_node.as_ref() {
-                    context.record_failed_node(node);
+                if let Some(ids) = failed_module_ids {
+                    context.stats.record_failed();
+                    context.failed_module_ids.extend(ids);
                 } else {
                     context.stats.record_failed();
                 }

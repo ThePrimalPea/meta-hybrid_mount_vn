@@ -72,6 +72,10 @@ fn load_module_rules(module_dir: &Path, module_id: &str, cfg: &config::Config) -
         }
     }
 
+    // Global config acts as admin override: default_mode takes precedence over
+    // the module's own choice (intentional — admin controls the default strategy).
+    // Paths are merged with module-local paths winning on conflict (HashMap::extend
+    // preserves existing keys), so modules can't be forced to handle unexpected paths.
     if let Some(global_rules) = cfg.rules.get(module_id) {
         rules.default_mode = global_rules.default_mode;
         rules.paths.extend(global_rules.paths.clone());

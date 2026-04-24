@@ -94,3 +94,37 @@ pub fn managed_partition_set(moduledir: &Path, extra_partitions: &[String]) -> H
         .into_iter()
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn alphabetic_start_valid() {
+        assert!(is_partition_candidate_name("system"));
+        assert!(is_partition_candidate_name("vendor"));
+        assert!(is_partition_candidate_name("a"));
+    }
+
+    #[test]
+    fn alphanumeric_and_underscore() {
+        assert!(is_partition_candidate_name("system_ext"));
+        assert!(is_partition_candidate_name("product_a1"));
+        assert!(is_partition_candidate_name("a_b_c"));
+    }
+
+    #[test]
+    fn non_alphabetic_start_invalid() {
+        assert!(!is_partition_candidate_name("1system"));
+        assert!(!is_partition_candidate_name("_vendor"));
+        assert!(!is_partition_candidate_name("-product"));
+    }
+
+    #[test]
+    fn special_chars_invalid() {
+        assert!(!is_partition_candidate_name("system/app"));
+        assert!(!is_partition_candidate_name("system@ext"));
+        assert!(!is_partition_candidate_name("system ext"));
+        assert!(!is_partition_candidate_name(""));
+    }
+}

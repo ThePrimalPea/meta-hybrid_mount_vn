@@ -276,3 +276,45 @@ impl Config {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn partitions_from_comma_separated_string() {
+        let config: Config = toml::from_str(r#"partitions = "system,vendor,product""#).unwrap();
+        assert_eq!(config.partitions, vec!["system", "vendor", "product"]);
+    }
+
+    #[test]
+    fn partitions_from_array() {
+        let config: Config =
+            toml::from_str(r#"partitions = ["system", "vendor", "product"]"#).unwrap();
+        assert_eq!(config.partitions, vec!["system", "vendor", "product"]);
+    }
+
+    #[test]
+    fn partitions_string_with_spaces() {
+        let config: Config = toml::from_str(r#"partitions = "system, vendor , product""#).unwrap();
+        assert_eq!(config.partitions, vec!["system", "vendor", "product"]);
+    }
+
+    #[test]
+    fn partitions_empty_string() {
+        let config: Config = toml::from_str(r#"partitions = """#).unwrap();
+        assert!(config.partitions.is_empty());
+    }
+
+    #[test]
+    fn partitions_empty_array() {
+        let config: Config = toml::from_str(r#"partitions = []"#).unwrap();
+        assert!(config.partitions.is_empty());
+    }
+
+    #[test]
+    fn partitions_default_when_missing() {
+        let config: Config = toml::from_str("").unwrap();
+        assert!(config.partitions.is_empty());
+    }
+}
