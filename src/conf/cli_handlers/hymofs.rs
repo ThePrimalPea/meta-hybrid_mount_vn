@@ -15,7 +15,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use serde_json::json;
+use serde::Serialize;
 
 use super::shared::{
     clear_pathbuf, detect_rule_file_type, load_effective_config, print_config_save_result,
@@ -24,36 +24,62 @@ use super::shared::{
 use crate::{
     conf::{
         cli::Cli,
-        schema::{HymoKstatRuleConfig, HymoMapsRuleConfig},
+        schema::{HymoFsConfig, HymoKstatRuleConfig, HymoMapsRuleConfig},
     },
-    core::{api, runtime_state::RuntimeState},
+    core::{
+        api::{self, LkmPayload},
+        runtime_state::{HymoFsRuntimeInfo, RuntimeState},
+    },
     mount::hymofs as hymofs_mount,
     sys::hymofs,
 };
+
+#[derive(Debug, Clone, Serialize)]
+struct HymofsStatusPayload {
+    pub status: String,
+    pub available: bool,
+    pub protocol_version: Option<i32>,
+    pub feature_bits: Option<i32>,
+    pub feature_names: Vec<String>,
+    pub hooks: Vec<String>,
+    pub rule_count: usize,
+    pub user_hide_rule_count: usize,
+    pub mirror_path: std::path::PathBuf,
+    pub lkm: LkmPayload,
+    pub config: HymoFsConfig,
+    pub runtime: HymofsStatusRuntime,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct HymofsStatusRuntime {
+    pub snapshot: HymoFsRuntimeInfo,
+    pub hymofs_modules: Vec<String>,
+    pub active_mounts: Vec<String>,
+}
 
 pub fn handle_hymofs_status(cli: &Cli) -> Result<()> {
     let config = load_effective_config(cli)?;
     let runtime_state = RuntimeState::load().unwrap_or_default();
     let hymofs_info = hymofs_mount::collect_runtime_info(&config);
 
-    let output = json!({
-        "status": hymofs_info.status,
-        "available": hymofs_info.available,
-        "protocol_version": hymofs_info.protocol_version,
-        "feature_bits": hymofs_info.feature_bits,
-        "feature_names": hymofs_info.feature_names,
-        "hooks": hymofs_info.hooks,
-        "rule_count": hymofs_info.rule_count,
-        "user_hide_rule_count": hymofs_info.user_hide_rule_count,
-        "mirror_path": hymofs_info.mirror_path,
-        "lkm": api::build_lkm_payload(&config),
-        "config": &config.hymofs,
-        "runtime": {
-            "snapshot": &runtime_state.hymofs,
-            "hymofs_modules": &runtime_state.hymofs_modules,
-            "active_mounts": &runtime_state.active_mounts,
-        }
-    });
+    let output = HymofsStatusPayload {
+        status: hymofs_info.status,
+        available: hymofs_info.available,
+        protocol_version: hymofs_info.protocol_version,
+        feature_bits: hymofs_info.feature_bits,
+        feature_names: hymofs_info.feature_names,
+        hooks: hymofs_info.hooks,
+        rule_count: hymofs_info.rule_count,
+        user_hide_rule_count: hymofs_info.user_hide_rule_count,
+        mirror_path: hymofs_info.mirror_path,
+        lkm: api::build_lkm_payload(&config),
+        config: config.hymofs.clone(),
+        runtime: HymofsStatusRuntime {
+            snapshot: runtime_state.hymofs.clone(),
+            hymofs_modules: runtime_state.hymofs_modules.clone(),
+            active_mounts: runtime_state.active_mounts.clone(),
+        },
+    };
 
     println!(
         "{}",

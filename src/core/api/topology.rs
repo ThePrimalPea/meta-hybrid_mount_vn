@@ -22,9 +22,7 @@ use std::{
 use anyhow::{Context, Result};
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use procfs::process::{MountInfo, MountOptFields, Process};
-#[cfg(any(target_os = "linux", target_os = "android"))]
 use serde::Serialize;
-use serde_json::{Value, json};
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use crate::defs;
@@ -32,80 +30,115 @@ use crate::defs;
 use crate::partitions;
 use crate::{conf::config::Config, core::runtime_state::RuntimeState};
 
-#[cfg(any(target_os = "linux", target_os = "android"))]
 #[derive(Debug, Clone, Serialize)]
-struct MountTopologyPayload {
-    supported: bool,
-    inspected_pid: u32,
-    state_pid: u32,
-    configured_mount_source: String,
-    state_mount_point: String,
-    active_mounts: Vec<String>,
-    error: Option<String>,
-    summary: Option<MountTopologySummary>,
-    warnings: Vec<String>,
-    focus_mounts: Vec<MountTopologyEntry>,
-    shared_peer_groups: Vec<SharedPeerGroupSummary>,
+pub struct MountTopologyPayload {
+    pub supported: bool,
+    pub inspected_pid: u32,
+    pub state_pid: u32,
+    pub configured_mount_source: String,
+    pub state_mount_point: String,
+    pub active_mounts: Vec<String>,
+    pub error: Option<String>,
+    pub summary: Option<MountTopologySummary>,
+    pub warnings: Vec<String>,
+    pub focus_mounts: Vec<MountTopologyEntry>,
+    pub shared_peer_groups: Vec<SharedPeerGroupSummary>,
 }
 
-#[cfg(any(target_os = "linux", target_os = "android"))]
 #[derive(Debug, Clone, Serialize)]
-struct MountTopologySummary {
-    total_mounts: usize,
-    hymofs_excluded_mounts: usize,
-    inspected_mounts: usize,
-    focus_mounts: usize,
-    project_related_mounts: usize,
-    managed_partition_root_mounts: usize,
-    managed_partition_root_propagation_mounts: usize,
-    active_partition_tree_mounts: usize,
-    active_partition_tree_propagation_mounts: usize,
-    hybrid_mount_internal_mounts: usize,
-    hybrid_mount_internal_propagation_mounts: usize,
-    storage_mounts: usize,
-    overlayfs_mounts: usize,
-    shared_mounts: usize,
-    slave_mounts: usize,
-    receiving_propagation_mounts: usize,
-    propagate_from_mounts: usize,
-    unbindable_mounts: usize,
-    shared_peer_groups: usize,
-    largest_shared_peer_group: usize,
+pub struct MountTopologySummary {
+    pub total_mounts: usize,
+    pub hymofs_excluded_mounts: usize,
+    pub inspected_mounts: usize,
+    pub focus_mounts: usize,
+    pub project_related_mounts: usize,
+    pub managed_partition_root_mounts: usize,
+    pub managed_partition_root_propagation_mounts: usize,
+    pub active_partition_tree_mounts: usize,
+    pub active_partition_tree_propagation_mounts: usize,
+    pub hybrid_mount_internal_mounts: usize,
+    pub hybrid_mount_internal_propagation_mounts: usize,
+    pub storage_mounts: usize,
+    pub overlayfs_mounts: usize,
+    pub shared_mounts: usize,
+    pub slave_mounts: usize,
+    pub receiving_propagation_mounts: usize,
+    pub propagate_from_mounts: usize,
+    pub unbindable_mounts: usize,
+    pub shared_peer_groups: usize,
+    pub largest_shared_peer_group: usize,
 }
 
-#[cfg(any(target_os = "linux", target_os = "android"))]
 #[derive(Debug, Clone, Serialize)]
-struct MountTopologyEntry {
-    mount_id: i32,
-    parent_mount_id: i32,
-    major_minor: String,
-    mount_point: String,
-    root: String,
-    fs_type: String,
-    mount_source: Option<String>,
-    propagation: MountPropagationInfo,
-    tags: Vec<String>,
+pub struct MountTopologyEntry {
+    pub mount_id: i32,
+    pub parent_mount_id: i32,
+    pub major_minor: String,
+    pub mount_point: String,
+    pub root: String,
+    pub fs_type: String,
+    pub mount_source: Option<String>,
+    pub propagation: MountPropagationInfo,
+    pub tags: Vec<String>,
 }
 
-#[cfg(any(target_os = "linux", target_os = "android"))]
 #[derive(Debug, Clone, Serialize, Default)]
-struct MountPropagationInfo {
-    shared: Option<u32>,
-    master: Option<u32>,
-    propagate_from: Option<u32>,
-    unbindable: bool,
+pub struct MountPropagationInfo {
+    pub shared: Option<u32>,
+    pub master: Option<u32>,
+    pub propagate_from: Option<u32>,
+    pub unbindable: bool,
 }
 
-#[cfg(any(target_os = "linux", target_os = "android"))]
 #[derive(Debug, Clone, Serialize)]
-struct SharedPeerGroupSummary {
-    peer_group: u32,
-    mount_count: usize,
-    managed_partition_root_mounts: usize,
-    active_partition_tree_mounts: usize,
-    hybrid_mount_internal_mounts: usize,
-    overlayfs_mounts: usize,
-    mount_points: Vec<String>,
+pub struct SharedPeerGroupSummary {
+    pub peer_group: u32,
+    pub mount_count: usize,
+    pub managed_partition_root_mounts: usize,
+    pub active_partition_tree_mounts: usize,
+    pub hybrid_mount_internal_mounts: usize,
+    pub overlayfs_mounts: usize,
+    pub mount_points: Vec<String>,
+}
+
+impl MountTopologyPayload {
+    pub fn unsupported(msg: &str) -> Self {
+        Self {
+            supported: false,
+            inspected_pid: std::process::id(),
+            state_pid: 0,
+            configured_mount_source: String::new(),
+            state_mount_point: String::new(),
+            active_mounts: Vec::new(),
+            error: Some(msg.to_string()),
+            summary: None,
+            warnings: Vec::new(),
+            focus_mounts: Vec::new(),
+            shared_peer_groups: Vec::new(),
+        }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    fn from_error(
+        state: &RuntimeState,
+        config: &Config,
+        inspected_pid: u32,
+        err_msg: &str,
+    ) -> Self {
+        Self {
+            supported: true,
+            inspected_pid,
+            state_pid: state.pid,
+            configured_mount_source: config.mountsource.clone(),
+            state_mount_point: state.mount_point.display().to_string(),
+            active_mounts: state.active_mounts.clone(),
+            error: Some(err_msg.to_string()),
+            summary: None,
+            warnings: Vec::new(),
+            focus_mounts: Vec::new(),
+            shared_peer_groups: Vec::new(),
+        }
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -152,58 +185,25 @@ struct MountClassifications {
     overlayfs: bool,
 }
 
-pub fn build_mount_topology_payload(config: &Config, state: &RuntimeState) -> Value {
+pub fn build_mount_topology_payload(config: &Config, state: &RuntimeState) -> MountTopologyPayload {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         let inspected_pid = std::process::id();
 
         match collect_mount_topology(config, state, inspected_pid) {
-            Ok(payload) => serde_json::to_value(payload).unwrap_or_else(|err| {
-                json!({
-                    "supported": true,
-                    "inspected_pid": inspected_pid,
-                    "state_pid": state.pid,
-                    "configured_mount_source": config.mountsource.clone(),
-                    "state_mount_point": state.mount_point.display().to_string(),
-                    "active_mounts": state.active_mounts.clone(),
-                    "error": format!("failed to serialize mount topology payload: {err}"),
-                    "summary": Value::Null,
-                    "warnings": Vec::<String>::new(),
-                    "focus_mounts": Vec::<Value>::new(),
-                    "shared_peer_groups": Vec::<Value>::new(),
-                })
-            }),
-            Err(err) => json!({
-                "supported": true,
-                "inspected_pid": inspected_pid,
-                "state_pid": state.pid,
-                "configured_mount_source": config.mountsource.clone(),
-                "state_mount_point": state.mount_point.display().to_string(),
-                "active_mounts": state.active_mounts.clone(),
-                "error": format!("{err:#}"),
-                "summary": Value::Null,
-                "warnings": Vec::<String>::new(),
-                "focus_mounts": Vec::<Value>::new(),
-                "shared_peer_groups": Vec::<Value>::new(),
-            }),
+            Ok(payload) => payload,
+            Err(err) => {
+                MountTopologyPayload::from_error(state, config, inspected_pid, &format!("{err:#}"))
+            }
         }
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
     {
-        json!({
-            "supported": false,
-            "inspected_pid": std::process::id(),
-            "state_pid": state.pid,
-            "configured_mount_source": config.mountsource.clone(),
-            "state_mount_point": state.mount_point.display().to_string(),
-            "active_mounts": state.active_mounts.clone(),
-            "error": "mount topology inspection is only supported on linux/android",
-            "summary": Value::Null,
-            "warnings": Vec::<String>::new(),
-            "focus_mounts": Vec::<Value>::new(),
-            "shared_peer_groups": Vec::<Value>::new(),
-        })
+        let _ = (config, state);
+        MountTopologyPayload::unsupported(
+            "mount topology inspection is only supported on linux/android",
+        )
     }
 }
 

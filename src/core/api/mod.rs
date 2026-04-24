@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod error;
 mod hymofs;
 mod system;
 mod topology;
 
 pub use self::{
+    error::print_json_error,
     hymofs::{
         build_features_payload, build_hymofs_version_payload, build_lkm_payload,
-        parse_hymofs_rule_listing,
+        parse_hymofs_rule_listing, FeatureInfo, LkmPayload,
     },
     system::{
         build_mount_stats_payload, build_partitions_payload, build_storage_payload,

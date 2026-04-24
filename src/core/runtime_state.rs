@@ -111,7 +111,7 @@ impl MountStatistics {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HymoFsRuntimeInfo {
     #[serde(default)]
     pub status: String,

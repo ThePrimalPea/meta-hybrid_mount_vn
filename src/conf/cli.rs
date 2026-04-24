@@ -47,6 +47,11 @@ pub enum Commands {
         #[arg(long)]
         payload: String,
     },
+    #[command(name = "save-full-config")]
+    SaveFullConfig {
+        #[arg(long)]
+        payload: String,
+    },
     #[command(name = "save-module-rules")]
     SaveModuleRules {
         #[arg(long)]

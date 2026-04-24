@@ -14,14 +14,30 @@
 
 use anyhow::Result;
 
-use crate::conf::{
-    cli::{
-        ApiCommands, Cli, Commands, HideCommands, HymofsCmdlineCommands, HymofsCommands,
-        HymofsHideUidsCommands, HymofsKstatCommands, HymofsMapsCommands, HymofsRuleCommands,
-        HymofsUnameCommands, LkmCommands,
+use crate::{
+    conf::{
+        cli::{
+            ApiCommands, Cli, Commands, HideCommands, HymofsCmdlineCommands, HymofsCommands,
+            HymofsHideUidsCommands, HymofsKstatCommands, HymofsMapsCommands, HymofsRuleCommands,
+            HymofsUnameCommands, LkmCommands,
+        },
+        cli_handlers,
     },
-    cli_handlers,
+    core::api,
 };
+
+fn run_api_command<F>(f: F) -> Result<()>
+where
+    F: FnOnce() -> Result<()>,
+{
+    match f() {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            api::print_json_error(&err);
+            Ok(())
+        }
+    }
+}
 
 pub fn run(cli: &Cli, command: &Commands) -> Result<()> {
     let _ = crate::utils::init_logging();
@@ -30,6 +46,7 @@ pub fn run(cli: &Cli, command: &Commands) -> Result<()> {
         Commands::GenConfig { output, force } => cli_handlers::handle_gen_config(output, *force),
         Commands::ShowConfig => cli_handlers::handle_show_config(cli),
         Commands::SaveConfig { payload } => cli_handlers::handle_save_config(cli, payload),
+        Commands::SaveFullConfig { payload } => cli_handlers::handle_save_full_config(cli, payload),
         Commands::SaveModuleRules { module, payload } => {
             cli_handlers::handle_save_module_rules(cli, module, payload)
         }
@@ -39,7 +56,7 @@ pub fn run(cli: &Cli, command: &Commands) -> Result<()> {
         Commands::Modules => cli_handlers::handle_modules(cli),
         Commands::State => cli_handlers::handle_state(),
         Commands::Logs { lines } => cli_handlers::handle_logs(*lines),
-        Commands::Api { command } => match command {
+        Commands::Api { command } => run_api_command(|| match command {
             ApiCommands::System => cli_handlers::handle_api_system(cli),
             ApiCommands::Storage => cli_handlers::handle_api_storage(),
             ApiCommands::MountStats => cli_handlers::handle_api_mount_stats(),
@@ -48,7 +65,7 @@ pub fn run(cli: &Cli, command: &Commands) -> Result<()> {
             ApiCommands::Lkm => cli_handlers::handle_api_lkm(cli),
             ApiCommands::Features => cli_handlers::handle_api_features(),
             ApiCommands::Hooks => cli_handlers::handle_api_hooks(cli),
-        },
+        }),
         Commands::Lkm { command } => match command {
             LkmCommands::Load => cli_handlers::handle_lkm_load(cli),
             LkmCommands::Unload => cli_handlers::handle_lkm_unload(cli),

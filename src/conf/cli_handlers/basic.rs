@@ -59,6 +59,16 @@ pub fn handle_save_config(cli: &Cli, payload: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn handle_save_full_config(cli: &Cli, payload: &str) -> Result<()> {
+    let full_config: Config = decode_hex_json(payload, "full config")?;
+    let mut session = load_config_session(cli)?;
+    *session.persisted_mut() = full_config;
+    let path = session.save().context("Failed to save full config file")?;
+
+    println!("Full configuration saved to {}.", path.display());
+    Ok(())
+}
+
 pub fn handle_save_module_rules(cli: &Cli, module_id: &str, payload: &str) -> Result<()> {
     utils::validate_module_id(module_id)?;
     let new_rules: config::ModuleRules = decode_hex_json(payload, "module rules")?;

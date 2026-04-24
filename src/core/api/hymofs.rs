@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::BTreeSet, path::Path};
+use std::{collections::BTreeSet, path::{Path, PathBuf}};
 
 use serde::Serialize;
-use serde_json::{Value, json};
 
 use crate::{
     conf::config::Config,
@@ -23,7 +22,7 @@ use crate::{
     defs,
     sys::{
         hymofs::{self, HymoFsStatus},
-        lkm,
+        lkm::{self, LkmStatus},
     },
 };
 
@@ -41,6 +40,51 @@ pub struct HymofsRuleEntry {
     pub args: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_type: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct FeatureInfo {
+    pub bitmask: i32,
+    pub names: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LkmPayload {
+    pub loaded: bool,
+    pub module_name: Option<String>,
+    pub autoload: bool,
+    pub kmi_override: String,
+    pub current_kmi: String,
+    pub search_dir: PathBuf,
+    pub module_file: Option<PathBuf>,
+    pub last_error: Option<String>,
+}
+
+impl From<LkmStatus> for LkmPayload {
+    fn from(status: LkmStatus) -> Self {
+        Self {
+            loaded: status.loaded,
+            module_name: status.module_name,
+            autoload: status.autoload,
+            kmi_override: status.kmi_override,
+            current_kmi: status.current_kmi,
+            search_dir: status.search_dir,
+            module_file: status.module_file,
+            last_error: lkm::last_error(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct HymofsVersionPayload {
+    pub protocol_version: i32,
+    pub kernel_version: i32,
+    pub hymofs_available: bool,
+    pub protocol_mismatch: bool,
+    pub mismatch_message: Option<String>,
+    pub active_modules: Vec<String>,
+    pub mount_base: PathBuf,
+    pub mirror_path: PathBuf,
 }
 
 pub fn parse_hymofs_rule_listing(listing: &str) -> Vec<HymofsRuleEntry> {
@@ -114,40 +158,31 @@ pub fn parse_hymofs_rule_listing(listing: &str) -> Vec<HymofsRuleEntry> {
     rules
 }
 
-pub fn build_features_payload() -> Value {
+pub fn build_features_payload() -> FeatureInfo {
     let bits = hymofs::get_features().unwrap_or_default();
-    json!({
-        "bitmask": bits,
-        "names": hymofs::feature_names(bits),
-    })
+    FeatureInfo {
+        bitmask: bits,
+        names: hymofs::feature_names(bits),
+    }
 }
 
-pub fn build_lkm_payload(config: &Config) -> Value {
+pub fn build_lkm_payload(config: &Config) -> LkmPayload {
     let status = lkm::status(&config.hymofs);
-    json!({
-        "loaded": status.loaded,
-        "module_name": status.module_name,
-        "autoload": status.autoload,
-        "kmi_override": status.kmi_override,
-        "current_kmi": status.current_kmi,
-        "search_dir": status.search_dir,
-        "module_file": status.module_file,
-        "last_error": lkm::last_error(),
-    })
+    LkmPayload::from(status)
 }
 
-pub fn build_hymofs_version_payload(config: &Config, state: &RuntimeState) -> Value {
+pub fn build_hymofs_version_payload(config: &Config, state: &RuntimeState) -> HymofsVersionPayload {
     if !config.hymofs.enabled {
-        return json!({
-            "protocol_version": hymofs::HYMO_PROTOCOL_VERSION,
-            "kernel_version": 0,
-            "hymofs_available": false,
-            "protocol_mismatch": false,
-            "mismatch_message": Value::Null,
-            "active_modules": Vec::<String>::new(),
-            "mount_base": state.mount_point,
-            "mirror_path": config.hymofs.mirror_path,
-        });
+        return HymofsVersionPayload {
+            protocol_version: hymofs::HYMO_PROTOCOL_VERSION,
+            kernel_version: 0,
+            hymofs_available: false,
+            protocol_mismatch: false,
+            mismatch_message: None,
+            active_modules: Vec::new(),
+            mount_base: state.mount_point.clone(),
+            mirror_path: config.hymofs.mirror_path.clone(),
+        };
     }
 
     let status = hymofs::check_status();
@@ -165,16 +200,16 @@ pub fn build_hymofs_version_payload(config: &Config, state: &RuntimeState) -> Va
 
     let mismatch = kernel_version.is_some_and(|version| version != hymofs::HYMO_PROTOCOL_VERSION);
 
-    json!({
-        "protocol_version": hymofs::HYMO_PROTOCOL_VERSION,
-        "kernel_version": kernel_version.unwrap_or_default(),
-        "hymofs_available": status == HymoFsStatus::Available,
-        "protocol_mismatch": mismatch,
-        "mismatch_message": mismatch_message(status, kernel_version),
-        "active_modules": active_modules,
-        "mount_base": state.mount_point,
-        "mirror_path": config.hymofs.mirror_path,
-    })
+    HymofsVersionPayload {
+        protocol_version: hymofs::HYMO_PROTOCOL_VERSION,
+        kernel_version: kernel_version.unwrap_or_default(),
+        hymofs_available: status == HymoFsStatus::Available,
+        protocol_mismatch: mismatch,
+        mismatch_message: mismatch_message(status, kernel_version),
+        active_modules,
+        mount_base: state.mount_point.clone(),
+        mirror_path: config.hymofs.mirror_path.clone(),
+    }
 }
 
 fn mismatch_message(status: HymoFsStatus, kernel_version: Option<i32>) -> Option<String> {

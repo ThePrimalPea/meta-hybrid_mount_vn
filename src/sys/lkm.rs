@@ -29,11 +29,12 @@ use anyhow::Context;
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
 use anyhow::bail;
 use anyhow::{Result, anyhow};
+use serde::Serialize;
 use walkdir::WalkDir;
 
 use crate::{conf::schema::HymoFsConfig, defs, sys::hymofs, utils::KSU};
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Default, PartialEq, Eq)]
 pub struct LkmStatus {
     pub loaded: bool,
     pub module_name: Option<String>,

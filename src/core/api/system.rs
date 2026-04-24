@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{ffi::CString, fs, os::unix::ffi::OsStrExt, path::PathBuf, process::Command};
+use std::{collections::BTreeMap, ffi::CString, fs, os::unix::ffi::OsStrExt, path::PathBuf, process::Command};
 
 use anyhow::{Context, Result};
 use serde::Serialize;
-use serde_json::{Value, json};
 
-use super::{build_features_payload, build_lkm_payload};
+use super::{build_features_payload, build_lkm_payload, FeatureInfo, LkmPayload};
 use crate::{
     conf::config::Config,
     core::runtime_state::RuntimeState,
@@ -53,6 +52,57 @@ pub struct StorageInfo {
     pub percent: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct MountStatsPayload {
+    pub total_mounts: usize,
+    pub successful_mounts: usize,
+    pub failed_mounts: usize,
+    pub tmpfs_created: usize,
+    pub files_mounted: usize,
+    pub dirs_mounted: usize,
+    pub symlinks_created: usize,
+    pub overlayfs_mounts: usize,
+    pub success_rate: f64,
+}
+
+impl From<&crate::core::runtime_state::MountStatistics> for MountStatsPayload {
+    fn from(stats: &crate::core::runtime_state::MountStatistics) -> Self {
+        Self {
+            total_mounts: stats.total_mounts,
+            successful_mounts: stats.successful_mounts,
+            failed_mounts: stats.failed_mounts,
+            tmpfs_created: stats.tmpfs_created,
+            files_mounted: stats.files_mounted,
+            dirs_mounted: stats.dirs_mounted,
+            symlinks_created: stats.symlinks_created,
+            overlayfs_mounts: stats.overlayfs_mounts,
+            success_rate: stats.success_rate(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SystemPayload {
+    pub api_version: i32,
+    pub kernel: String,
+    pub selinux: String,
+    pub mount_base: PathBuf,
+    pub mount_error_modules: Vec<String>,
+    pub mount_error_reasons: BTreeMap<String, String>,
+    pub skip_mount_modules: Vec<String>,
+    pub hymofs_available: bool,
+    pub hymofs_status: i32,
+    pub lkm: LkmPayload,
+    #[serde(rename = "mountStats")]
+    pub mount_stats: MountStatsPayload,
+    #[serde(rename = "detectedPartitions")]
+    pub detected_partitions: Vec<PartitionInfo>,
+    pub hooks: String,
+    pub features: FeatureInfo,
+    pub active_mounts: Vec<String>,
+    pub tmpfs_xattr_supported: bool,
 }
 
 #[derive(Debug)]
@@ -118,26 +168,15 @@ pub fn build_storage_payload(state: &RuntimeState) -> StorageInfo {
     }
 }
 
-pub fn build_mount_stats_payload(state: &RuntimeState) -> Value {
-    let stats = &state.mount_stats;
-    json!({
-        "total_mounts": stats.total_mounts,
-        "successful_mounts": stats.successful_mounts,
-        "failed_mounts": stats.failed_mounts,
-        "tmpfs_created": stats.tmpfs_created,
-        "files_mounted": stats.files_mounted,
-        "dirs_mounted": stats.dirs_mounted,
-        "symlinks_created": stats.symlinks_created,
-        "overlayfs_mounts": stats.overlayfs_mounts,
-        "success_rate": stats.success_rate(),
-    })
+pub fn build_mount_stats_payload(state: &RuntimeState) -> MountStatsPayload {
+    MountStatsPayload::from(&state.mount_stats)
 }
 
 pub fn build_partitions_payload(config: &Config) -> Vec<PartitionInfo> {
     detect_partitions(config).unwrap_or_default()
 }
 
-pub fn build_system_payload(config: &Config, state: &RuntimeState) -> Value {
+pub fn build_system_payload(config: &Config, state: &RuntimeState) -> SystemPayload {
     let status = if config.hymofs.enabled {
         hymofs::check_status()
     } else {
@@ -146,10 +185,10 @@ pub fn build_system_payload(config: &Config, state: &RuntimeState) -> Value {
     let features = if config.hymofs.enabled {
         build_features_payload()
     } else {
-        json!({
-            "bitmask": 0,
-            "names": Vec::<String>::new(),
-        })
+        FeatureInfo {
+            bitmask: 0,
+            names: Vec::new(),
+        }
     };
     let hooks = if config.hymofs.enabled {
         hymofs::get_hooks().unwrap_or_default()
@@ -157,22 +196,24 @@ pub fn build_system_payload(config: &Config, state: &RuntimeState) -> Value {
         String::new()
     };
 
-    json!({
-        "api_version": 1,
-        "kernel": read_kernel_release().unwrap_or_else(|_| "Unknown".to_string()),
-        "selinux": read_selinux_status().unwrap_or_else(|_| "Unknown".to_string()),
-        "mount_base": state.mount_point,
-        "mount_error_modules": state.mount_error_modules,
-        "mount_error_reasons": state.mount_error_reasons,
-        "skip_mount_modules": state.skip_mount_modules,
-        "hymofs_available": status == HymoFsStatus::Available,
-        "hymofs_status": status_code(status),
-        "lkm": build_lkm_payload(config),
-        "mountStats": build_mount_stats_payload(state),
-        "detectedPartitions": build_partitions_payload(config),
-        "hooks": hooks,
-        "features": features,
-    })
+    SystemPayload {
+        api_version: 1,
+        kernel: read_kernel_release().unwrap_or_else(|_| "Unknown".to_string()),
+        selinux: read_selinux_status().unwrap_or_else(|_| "Unknown".to_string()),
+        mount_base: state.mount_point.clone(),
+        mount_error_modules: state.mount_error_modules.clone(),
+        mount_error_reasons: state.mount_error_reasons.clone(),
+        skip_mount_modules: state.skip_mount_modules.clone(),
+        hymofs_available: status == HymoFsStatus::Available,
+        hymofs_status: status_code(status),
+        lkm: build_lkm_payload(config),
+        mount_stats: build_mount_stats_payload(state),
+        detected_partitions: build_partitions_payload(config),
+        hooks,
+        features,
+        active_mounts: state.active_mounts.clone(),
+        tmpfs_xattr_supported: state.tmpfs_xattr_supported,
+    }
 }
 
 fn status_code(status: HymoFsStatus) -> i32 {
