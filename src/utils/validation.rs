@@ -51,7 +51,7 @@ pub fn extract_module_id(path: &Path) -> Option<String> {
     let mut current = path;
     loop {
         if current.join("module.prop").exists() {
-            return current.file_name().map(|s| s.to_string_lossy().to_string());
+            return current.file_name().map(|s| s.to_string_lossy().into_owned());
         }
         match current.parent() {
             Some(p) => current = p,
@@ -61,5 +61,5 @@ pub fn extract_module_id(path: &Path) -> Option<String> {
 
     path.parent()
         .and_then(|p| p.file_name())
-        .map(|s| s.to_string_lossy().to_string())
+        .map(|s| s.to_string_lossy().into_owned())
 }

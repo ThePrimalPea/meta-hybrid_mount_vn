@@ -55,7 +55,7 @@ jobs:
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r27
+          ndk-version: r29
 
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@nightly

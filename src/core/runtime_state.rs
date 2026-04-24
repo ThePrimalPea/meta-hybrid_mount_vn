@@ -283,7 +283,7 @@ fn collect_skip_mount_modules(config: &Config) -> Vec<String> {
         if !module_dir.is_dir() {
             continue;
         }
-        let id = entry.file_name().to_string_lossy().to_string();
+        let id = entry.file_name().to_string_lossy().into_owned();
         if crate::core::inventory::is_reserved_module_dir(&id) {
             continue;
         }

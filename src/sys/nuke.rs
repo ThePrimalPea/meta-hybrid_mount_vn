@@ -263,7 +263,7 @@ fn execute_apatch_nuke(path: &Path) -> Result<()> {
     let procfs_node = probe_ext4_procfs_node(path).ok().flatten();
     let before_exists = procfs_node.as_ref().is_some_and(|node| node.exists());
 
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = path.to_string_lossy().into_owned();
     let call_output = if config.call_mode.eq_ignore_ascii_case("nr") {
         let nr = std::env::var("HYBRID_MOUNT_APATCH_KPM_UNUSED_NR")
             .context("HYBRID_MOUNT_APATCH_KPM_UNUSED_NR is required when call mode is 'nr'")?;

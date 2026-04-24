@@ -69,7 +69,7 @@ pub(super) fn list_module_dirs(base: &Path) -> Result<HashMap<String, PathBuf>> 
         if !path.is_dir() {
             continue;
         }
-        let id = entry.file_name().to_string_lossy().to_string();
+        let id = entry.file_name().to_string_lossy().into_owned();
         if crate::core::inventory::is_reserved_module_dir(&id) {
             continue;
         }

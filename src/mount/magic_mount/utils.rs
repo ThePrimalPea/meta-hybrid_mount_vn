@@ -208,7 +208,7 @@ fn collect_magic_subtree(
         };
 
         let file_name = entry.file_name();
-        let name = file_name.to_string_lossy().to_string();
+        let name = file_name.to_string_lossy().into_owned();
         let entry_path = entry.path();
         let next_relative = relative_path.join(&file_name);
         let effective_mode = effective_mode(

@@ -111,7 +111,7 @@ fn scan_with_mode(source_dir: &Path, cfg: &config::Config, mode: ScanMode) -> Re
             continue;
         }
 
-        let id = entry.file_name().to_string_lossy().to_string();
+        let id = entry.file_name().to_string_lossy().into_owned();
 
         if inventory::is_reserved_module_dir(&id) {
             skipped_reserved += 1;

@@ -486,7 +486,7 @@ impl MagicMount {
 impl MagicMount {
     fn mount_path(&mut self, has_tmpfs: bool, context: &mut MountContext) -> Result<()> {
         for entry in self.path.read_dir()?.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
+            let name = entry.file_name().to_string_lossy().into_owned();
             let mut failed_node: Option<Node> = None;
             let result = {
                 if let Some(node) = self.node.children.remove(&name) {

@@ -183,7 +183,7 @@ fn generate_with_root(
 
     let mut overlay_ids = HashSet::new();
     for (target_path, (partition_name, mut layers)) in planner.into_overlay_groups() {
-        let target_str = target_path.to_string_lossy().to_string();
+        let target_str = target_path.to_string_lossy().into_owned();
 
         if !target_path.is_dir() {
             continue;

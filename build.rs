@@ -56,11 +56,11 @@ fn main() -> Result<()> {
 }
 
 fn cal_version_code(version: &str) -> Result<usize> {
-    let manjor = version
+    let major = version
         .split('.')
         .next()
         .ok_or_else(|| anyhow::anyhow!("Invalid version format"))?;
-    let manjor: usize = manjor.parse()?;
+    let major: usize = major.parse()?;
     let minor = version
         .split('.')
         .nth(1)
@@ -72,7 +72,7 @@ fn cal_version_code(version: &str) -> Result<usize> {
         .ok_or_else(|| anyhow::anyhow!("Invalid version format"))?;
     let patch: usize = patch.parse()?;
 
-    Ok(manjor * 100000 + minor * 1000 + patch)
+    Ok(major * 100000 + minor * 1000 + patch)
 }
 
 fn cal_git_code() -> Result<i32> {
@@ -92,10 +92,10 @@ fn gen_module_prop(data: &CargoConfig) -> Result<()> {
     let version_code = cal_version_code(&package.version)?;
     let authors = &package.authors;
     let mut author = String::new();
-    let mut conut = 0;
+    let mut count = 0;
     for a in authors {
-        conut += 1;
-        if conut > 1 {
+        count += 1;
+        if count > 1 {
             author += &format!("& {a} ");
         } else {
             author += &format!("{a} ");

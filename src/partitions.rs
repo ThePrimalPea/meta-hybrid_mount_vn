@@ -50,7 +50,7 @@ pub fn discover_partition_names(moduledir: &Path, extra_partitions: &[String]) -
                 continue;
             }
 
-            let module_id = module_entry.file_name().to_string_lossy().to_string();
+            let module_id = module_entry.file_name().to_string_lossy().into_owned();
             if inventory::is_reserved_module_dir(&module_id)
                 || inventory::has_mount_block_marker(&module_path)
             {

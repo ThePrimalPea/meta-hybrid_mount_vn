@@ -113,7 +113,7 @@ impl Node {
                     continue;
                 }
             };
-            let name = entry.file_name().to_string_lossy().to_string();
+            let name = entry.file_name().to_string_lossy().into_owned();
 
             let node = match self.children.entry(name.clone()) {
                 Entry::Occupied(o) => Some(o.into_mut()),

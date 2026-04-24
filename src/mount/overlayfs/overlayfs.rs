@@ -193,7 +193,7 @@ pub fn mount_overlayfs(
 
         let _ = send_umountable(&staging_dir);
 
-        current_layers.push(staging_dir.to_string_lossy().to_string());
+        current_layers.push(staging_dir.to_string_lossy().into_owned());
     }
 
     mount_overlay_core(
