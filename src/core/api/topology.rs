@@ -102,6 +102,7 @@ pub struct SharedPeerGroupSummary {
 }
 
 impl MountTopologyPayload {
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
     pub fn unsupported(msg: &str) -> Self {
         Self {
             supported: false,

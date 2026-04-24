@@ -121,16 +121,16 @@ fn detach_existing_mount(mnt_base: &Path) {
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    if is_mounted(mnt_base) {
-        if let Err(e) = umount(mnt_base, UnmountFlags::DETACH) {
-            crate::scoped_log!(
-                warn,
-                "storage",
-                "failed to detach existing mount at {}: {:#}",
-                mnt_base.display(),
-                e
-            );
-        }
+    if is_mounted(mnt_base)
+        && let Err(e) = umount(mnt_base, UnmountFlags::DETACH)
+    {
+        crate::scoped_log!(
+            warn,
+            "storage",
+            "failed to detach existing mount at {}: {:#}",
+            mnt_base.display(),
+            e
+        );
     }
 }
 
@@ -147,16 +147,14 @@ fn finalize_mount_setup(path: &Path, disable_umount: bool) {
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    if !disable_umount {
-        if let Err(e) = send_umountable(path) {
-            crate::scoped_log!(
-                warn,
-                "storage",
-                "failed to register umountable at {}: {:#}",
-                path.display(),
-                e
-            );
-        }
+    if !disable_umount && let Err(e) = send_umountable(path) {
+        crate::scoped_log!(
+            warn,
+            "storage",
+            "failed to register umountable at {}: {:#}",
+            path.display(),
+            e
+        );
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "android")))]

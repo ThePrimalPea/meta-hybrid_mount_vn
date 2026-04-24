@@ -91,16 +91,16 @@ pub(super) fn mount_overlay(
     hymofs.hide_overlay_xattrs(Path::new(&op.target));
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    if !config.disable_umount {
-        if let Err(e) = umount_mgr::send_umountable(&op.target) {
-            crate::scoped_log!(
-                warn,
-                "overlay",
-                "failed to register umountable at {}: {:#}",
-                op.target,
-                e
-            );
-        }
+    if !config.disable_umount
+        && let Err(e) = umount_mgr::send_umountable(&op.target)
+    {
+        crate::scoped_log!(
+            warn,
+            "overlay",
+            "failed to register umountable at {}: {:#}",
+            op.target,
+            e
+        );
     }
 
     Ok(involved_modules)
