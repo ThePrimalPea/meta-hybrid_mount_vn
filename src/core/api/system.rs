@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::BTreeMap, ffi::CString, fs, os::unix::ffi::OsStrExt, path::PathBuf, process::Command};
+use std::{
+    collections::BTreeMap, ffi::CString, fs, os::unix::ffi::OsStrExt, path::PathBuf,
+    process::Command,
+};
 
 use anyhow::{Context, Result};
 use serde::Serialize;
 
-use super::{build_features_payload, build_lkm_payload, FeatureInfo, LkmPayload};
+use super::{FeatureInfo, LkmPayload, build_features_payload, build_lkm_payload};
 use crate::{
     conf::config::Config,
     core::runtime_state::RuntimeState,
