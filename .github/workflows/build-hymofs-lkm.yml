@@ -22,6 +22,16 @@ on:
         required: false
         default: false
         type: boolean
+      hymofs_ref:
+        description: "HymoFS git ref (branch/tag/commit)"
+        required: false
+        default: "main"
+        type: string
+      ddk_release:
+        description: "DDK release version"
+        required: false
+        default: "20251104"
+        type: string
   workflow_dispatch:
     inputs:
       full_archs:
@@ -29,6 +39,16 @@ on:
         required: false
         default: false
         type: boolean
+      hymofs_ref:
+        description: "HymoFS git ref (branch/tag/commit)"
+        required: false
+        default: "main"
+        type: string
+      ddk_release:
+        description: "DDK release version"
+        required: false
+        default: "20251104"
+        type: string
 
 jobs:
   build-hymofs-lkm:
@@ -50,4 +70,5 @@ jobs:
     with:
       kmi: ${{ matrix.kmi }}
       arch: ${{ matrix.arch }}
-      ddk_release: "20251104"
+      hymofs_ref: ${{ inputs.hymofs_ref }}
+      ddk_release: ${{ inputs.ddk_release }}

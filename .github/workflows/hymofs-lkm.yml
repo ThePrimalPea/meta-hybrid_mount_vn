@@ -40,9 +40,6 @@ jobs:
   build:
     name: Build hymofs ${{ inputs.arch }} ${{ inputs.kmi }}
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/ylarod/ddk:${{ inputs.kmi }}-${{ inputs.ddk_release }}
-      options: --privileged
     env:
       KMI: ${{ inputs.kmi }}
       TARGET_ARCH: ${{ inputs.arch }}
@@ -63,46 +60,90 @@ jobs:
             exit 1
           fi
 
-      - name: Clone HymoFS
+      - name: Resolve HymoFS source
+        id: hymofs_source
         run: |
           set -euo pipefail
-          echo "Cloning HymoFS (ref: ${{ inputs.hymofs_ref }})..."
-          git clone --depth 1 "https://github.com/Anatdx/HymoFS.git" "$SRC_ROOT"
+
+          echo "Resolving HymoFS (ref: ${{ inputs.hymofs_ref }})..."
+          rm -rf "$SRC_ROOT"
+          git init "$SRC_ROOT"
           (
             cd "$SRC_ROOT"
+            git remote add origin "https://github.com/Anatdx/HymoFS.git"
             git fetch --depth 1 origin "${{ inputs.hymofs_ref }}"
             git checkout FETCH_HEAD
+            SHA="$(git rev-parse HEAD)"
+            COMMIT_NUM="$(git rev-list --count HEAD)"
+            VERSION="$((COMMIT_NUM + 200))"
+
+            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "Resolved HymoFS to $SHA"
           )
           ls -la "$SRC/"
 
-      - name: Generate version
-        id: parse_version
-        run: |
-          COMMIT_NUM=$(cd "$SRC_ROOT" && git rev-list --count HEAD)
-          VERSION=$((COMMIT_NUM + 200))
-          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Restore cached .ko
+        id: cache-lkm
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.OUT }}
+          key: hymofs-lkm-${{ runner.os }}-${{ env.KMI }}-${{ env.TARGET_ARCH }}-ddk-${{ inputs.ddk_release }}-hymofs-${{ steps.hymofs_source.outputs.sha }}-${{ hashFiles('.github/workflows/hymofs-lkm.yml') }}
 
       - name: Build hymofs_lkm.ko
+        if: steps.cache-lkm.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          if [ -z "${KDIR:-}" ] || [ ! -f "$KDIR/Makefile" ]; then
-            echo "KDIR is not available inside DDK container: ${KDIR:-<empty>}"
-            exit 1
-          fi
 
-          VERSION="${{ steps.parse_version.outputs.VERSION }}"
-          echo "Building hymofs_lkm.ko with KDIR=$KDIR"
-          (
-            cd "$SRC_ROOT"
-            make -j"$(nproc --all)" CC=clang \
-              CFLAGS_MODULE="-DHYMOFS_VERSION=\\\"0.1.${VERSION}\\\""
-          )
+          IMAGE="ghcr.io/ylarod/ddk:${KMI}-${{ inputs.ddk_release }}"
+          HYMOFS_VERSION="${{ steps.hymofs_source.outputs.version }}"
 
-          mkdir -p "$OUT"
-          KO_FILE="${KMI}_${TARGET_ARCH}_hymofs_lkm.ko"
-          cp "$SRC/hymofs_lkm.ko" "$OUT/$KO_FILE"
-          llvm-strip -d "$OUT/$KO_FILE" 2>/dev/null || true
-          ls -la "$OUT/"
+          echo "Cache miss for ${KMI}_${TARGET_ARCH}_hymofs_lkm.ko"
+          echo "Building with DDK image: $IMAGE"
+          docker pull "$IMAGE"
+          docker run --rm --privileged \
+            -v "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}" \
+            -w "${GITHUB_WORKSPACE}" \
+            -e KMI="$KMI" \
+            -e TARGET_ARCH="$TARGET_ARCH" \
+            -e OUT="$OUT" \
+            -e SRC_ROOT="$SRC_ROOT" \
+            -e SRC="$SRC" \
+            -e HYMOFS_VERSION="$HYMOFS_VERSION" \
+            "$IMAGE" \
+            bash -lc '
+              set -euo pipefail
+
+              if [ -z "${KDIR:-}" ] || [ ! -f "$KDIR/Makefile" ]; then
+                echo "KDIR is not available inside DDK container: ${KDIR:-<empty>}"
+                exit 1
+              fi
+
+              echo "Building hymofs_lkm.ko with KDIR=$KDIR"
+              (
+                cd "$SRC_ROOT"
+                make -j"$(nproc --all)" CC=clang \
+                  CFLAGS_MODULE="-DHYMOFS_VERSION=\\\"0.1.${HYMOFS_VERSION}\\\""
+              )
+
+              mkdir -p "$OUT"
+              KO_FILE="${KMI}_${TARGET_ARCH}_hymofs_lkm.ko"
+              cp "$SRC/hymofs_lkm.ko" "$OUT/$KO_FILE"
+              llvm-strip -d "$OUT/$KO_FILE" 2>/dev/null || true
+              ls -la "$OUT/"
+            '
+
+      - name: Verify .ko
+        run: |
+          set -euo pipefail
+          KO_FILE="${OUT}/${KMI}_${TARGET_ARCH}_hymofs_lkm.ko"
+          test -s "$KO_FILE"
+          ls -la "$KO_FILE"
+
+      - name: Report cache hit
+        if: steps.cache-lkm.outputs.cache-hit == 'true'
+        run: |
+          echo "Using cached ${KMI}_${TARGET_ARCH}_hymofs_lkm.ko"
 
       - name: Upload .ko
         uses: actions/upload-artifact@v7
