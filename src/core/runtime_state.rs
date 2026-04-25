@@ -355,7 +355,6 @@ impl RuntimeState {
     }
 }
 
-
 fn collect_mode_stats(result: &ExecutionResult) -> ModuleModeStats {
     ModuleModeStats {
         overlayfs: result.overlay_module_ids.len(),
