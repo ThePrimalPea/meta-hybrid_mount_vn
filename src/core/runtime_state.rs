@@ -192,7 +192,7 @@ impl RuntimeState {
 
         let tmpfs_xattr_supported = xattr::is_overlay_xattr_supported().unwrap_or(false);
 
-        Self {
+        let state = Self {
             timestamp,
             pid,
             storage_mode,
@@ -207,12 +207,40 @@ impl RuntimeState {
             tmpfs_xattr_supported,
             mount_stats,
             hymofs,
-        }
+        };
+
+        crate::scoped_log!(
+            debug,
+            "runtime_state:new",
+            "complete: storage_mode={}, mount_point={}, overlay_modules={}, magic_modules={}, hymofs_modules={}, active_mounts={}, tmpfs_xattr_supported={}",
+            state.storage_mode,
+            state.mount_point.display(),
+            state.overlay_modules.len(),
+            state.magic_modules.len(),
+            state.hymofs_modules.len(),
+            state.active_mounts.len(),
+            state.tmpfs_xattr_supported
+        );
+
+        state
     }
 
     pub fn save(&self) -> Result<()> {
+        crate::scoped_log!(
+            debug,
+            "runtime_state:save",
+            "start: path={}",
+            defs::STATE_FILE
+        );
         let json = serde_json::to_string_pretty(self)?;
         atomic_write(defs::STATE_FILE, json.as_bytes())?;
+        crate::scoped_log!(
+            debug,
+            "runtime_state:save",
+            "complete: path={}, bytes={}",
+            defs::STATE_FILE,
+            json.len()
+        );
         Ok(())
     }
 
@@ -222,7 +250,30 @@ impl RuntimeState {
         mount_point: &Path,
         result: &ExecutionResult,
     ) -> Self {
-        let previous_state = Self::load().unwrap_or_default();
+        crate::scoped_log!(
+            debug,
+            "runtime_state:build",
+            "start: storage_mode={}, mount_point={}, overlay_modules={}, magic_modules={}, hymofs_modules={}",
+            storage_mode.as_str(),
+            mount_point.display(),
+            result.overlay_module_ids.len(),
+            result.magic_module_ids.len(),
+            result.hymofs_module_ids.len()
+        );
+
+        let previous_state = match Self::load() {
+            Ok(state) => state,
+            Err(err) => {
+                crate::scoped_log!(
+                    warn,
+                    "runtime_state:build",
+                    "fallback: reason=load_previous_failed, error={:#}",
+                    err
+                );
+                Self::default()
+            }
+        };
+
         let hymofs = hymofs::collect_runtime_info(config);
         let mut state = Self::new(
             storage_mode.as_str().to_string(),
@@ -238,6 +289,16 @@ impl RuntimeState {
         state.mount_error_reasons = previous_state.mount_error_reasons;
         clear_recovered_mount_errors(&mut state);
         state.skip_mount_modules = collect_skip_mount_modules(config);
+
+        crate::scoped_log!(
+            debug,
+            "runtime_state:build",
+            "complete: mount_errors={}, skip_mount_modules={}, active_mounts={}",
+            state.mount_error_modules.len(),
+            state.skip_mount_modules.len(),
+            state.active_mounts.len()
+        );
+
         state
     }
 
@@ -251,11 +312,30 @@ impl RuntimeState {
     }
 
     pub fn load() -> Result<Self> {
+        crate::scoped_log!(
+            debug,
+            "runtime_state:load",
+            "start: path={}",
+            defs::STATE_FILE
+        );
         if !std::path::Path::new(defs::STATE_FILE).exists() {
+            crate::scoped_log!(
+                debug,
+                "runtime_state:load",
+                "fallback: reason=state_file_missing, path={}",
+                defs::STATE_FILE
+            );
             return Ok(Self::default());
         }
         let content = fs::read_to_string(defs::STATE_FILE)?;
         let state = serde_json::from_str(&content)?;
+        crate::scoped_log!(
+            debug,
+            "runtime_state:load",
+            "complete: path={}, bytes={}",
+            defs::STATE_FILE,
+            content.len()
+        );
         Ok(state)
     }
 }
@@ -269,12 +349,28 @@ fn collect_active_mounts(result: &ExecutionResult) -> Vec<String> {
 
     active_mounts.sort();
     active_mounts.dedup();
+
+    crate::scoped_log!(
+        debug,
+        "runtime_state:active_mounts",
+        "complete: overlay_partitions={}, hymofs_runtime_enabled={}, active_mounts={}",
+        result.overlay_partitions.len(),
+        result.hymofs_runtime_enabled,
+        active_mounts.len()
+    );
+
     active_mounts
 }
 
 fn collect_skip_mount_modules(config: &Config) -> Vec<String> {
     let mut modules = Vec::new();
     let Ok(entries) = fs::read_dir(&config.moduledir) else {
+        crate::scoped_log!(
+            debug,
+            "runtime_state:skip_modules",
+            "skip: reason=moduledir_unreadable, path={}",
+            config.moduledir.display()
+        );
         return modules;
     };
 
@@ -293,6 +389,15 @@ fn collect_skip_mount_modules(config: &Config) -> Vec<String> {
     }
 
     modules.sort();
+
+    crate::scoped_log!(
+        debug,
+        "runtime_state:skip_modules",
+        "complete: moduledir={}, modules={}",
+        config.moduledir.display(),
+        modules.len()
+    );
+
     modules
 }
 

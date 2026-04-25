@@ -59,7 +59,18 @@ struct HymofsStatusRuntime {
 
 pub fn handle_hymofs_status(cli: &Cli) -> Result<()> {
     let config = load_effective_config(cli)?;
-    let runtime_state = RuntimeState::load().unwrap_or_default();
+    let runtime_state = match RuntimeState::load() {
+        Ok(state) => state,
+        Err(err) => {
+            crate::scoped_log!(
+                debug,
+                "cli:hymofs:status",
+                "fallback: reason=runtime_state_load_failed, error={:#}",
+                err
+            );
+            RuntimeState::default()
+        }
+    };
     let hymofs_info = hymofs_mount::collect_runtime_info(&config);
 
     let output = HymofsStatusPayload {
@@ -104,7 +115,18 @@ pub fn handle_hymofs_list(cli: &Cli) -> Result<()> {
 
 pub fn handle_hymofs_version(cli: &Cli) -> Result<()> {
     let config = load_effective_config(cli)?;
-    let state = RuntimeState::load().unwrap_or_default();
+    let state = match RuntimeState::load() {
+        Ok(state) => state,
+        Err(err) => {
+            crate::scoped_log!(
+                debug,
+                "cli:hymofs:version",
+                "fallback: reason=runtime_state_load_failed, error={:#}",
+                err
+            );
+            RuntimeState::default()
+        }
+    };
     let payload = api::build_hymofs_version_payload(&config, &state);
     println!(
         "{}",
@@ -128,7 +150,9 @@ pub fn handle_hymofs_hooks() -> Result<()> {
 }
 
 pub fn handle_hymofs_clear() -> Result<()> {
+    crate::scoped_log!(info, "cli:hymofs:clear", "start");
     hymofs::clear_rules()?;
+    crate::scoped_log!(info, "cli:hymofs:clear", "complete");
     println!("HymoFS rules cleared.");
     Ok(())
 }
@@ -146,16 +170,26 @@ pub fn handle_hymofs_invalidate_cache() -> Result<()> {
 }
 
 pub fn handle_hymofs_fix_mounts() -> Result<()> {
+    crate::scoped_log!(info, "cli:hymofs:fix_mounts", "start");
     hymofs::fix_mounts()?;
+    crate::scoped_log!(info, "cli:hymofs:fix_mounts", "complete");
     println!("HymoFS mount ordering fixed.");
     Ok(())
 }
 
 pub fn handle_hymofs_set_enabled(cli: &Cli, enabled: bool) -> Result<()> {
+    crate::scoped_log!(info, "cli:hymofs:set_enabled", "start: enabled={}", enabled);
     let (path, _) = update_config_for_cli(cli, |config| {
         config.hymofs.enabled = enabled;
     })?;
     hymofs::invalidate_status_cache();
+    crate::scoped_log!(
+        info,
+        "cli:hymofs:set_enabled",
+        "complete: enabled={}, path={}",
+        enabled,
+        path.display()
+    );
     print_config_save_result(
         &path,
         if enabled {

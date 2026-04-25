@@ -21,6 +21,14 @@ fn partition_root_exists(name: &str) -> bool {
 }
 
 pub fn discover_partition_names(_moduledir: &Path, extra_partitions: &[String]) -> Vec<String> {
+    crate::scoped_log!(
+        debug,
+        "partitions:discover",
+        "start: managed_candidates={}, extra_candidates={}",
+        defs::MANAGED_PARTITIONS.len(),
+        extra_partitions.len()
+    );
+
     let mut names = defs::MANAGED_PARTITIONS
         .iter()
         .copied()
@@ -37,6 +45,14 @@ pub fn discover_partition_names(_moduledir: &Path, extra_partitions: &[String]) 
 
     names.sort();
     names.dedup();
+
+    crate::scoped_log!(
+        debug,
+        "partitions:discover",
+        "complete: discovered={}",
+        names.len()
+    );
+
     names
 }
 

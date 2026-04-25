@@ -674,9 +674,12 @@ fn fetch_anon_fd() -> Result<c_int> {
     {
         let cache = FD_CACHE.lock().map_err(|_| lock_error("fd"))?;
         if let Some(fd) = *cache {
+            crate::scoped_log!(debug, "hymofs:fd", "complete: source=cache, fd={}", fd);
             return Ok(fd);
         }
     }
+
+    crate::scoped_log!(debug, "hymofs:fd", "start: source=kernel_query");
 
     let mut fd = -1;
     const WAIT_ATTEMPTS: usize = 4;
@@ -698,6 +701,12 @@ fn fetch_anon_fd() -> Result<c_int> {
         }
 
         if fd >= 0 {
+            crate::scoped_log!(
+                debug,
+                "hymofs:fd",
+                "complete: source=prctl, round={}",
+                wait_round
+            );
             break;
         }
 
@@ -716,6 +725,13 @@ fn fetch_anon_fd() -> Result<c_int> {
             }
 
             if fd >= 0 {
+                crate::scoped_log!(
+                    debug,
+                    "hymofs:fd",
+                    "complete: source=syscall, round={}, retry={}",
+                    wait_round,
+                    retry
+                );
                 break;
             }
         }
@@ -728,9 +744,10 @@ fn fetch_anon_fd() -> Result<c_int> {
     if fd < 0 {
         crate::scoped_log!(
             warn,
-            "hymofs",
-            "failed to obtain HymoFS anonymous fd after {} retries",
-            WAIT_ATTEMPTS
+            "hymofs:fd",
+            "failed: reason=obtain_fd_failed, attempts={}, short_retries={}",
+            WAIT_ATTEMPTS,
+            SHORT_RETRIES
         );
         bail!("failed to obtain HymoFS anonymous fd");
     }
@@ -760,24 +777,72 @@ fn ioctl_error_context(name: &str, request: HymoIoctlRequest, err: Errno) -> Str
 }
 
 fn ioctl_noarg(name: &str, request: HymoIoctlRequest) -> Result<()> {
+    crate::scoped_log!(
+        debug,
+        "hymofs:ioctl",
+        "start: name={}, opcode=0x{:x}, has_arg=false",
+        name,
+        request
+    );
     let fd = unsafe { BorrowedFd::borrow_raw(fetch_anon_fd()?) };
     let ioctl = HymoIoctlNoArg::new(request);
     match unsafe { ioctl::ioctl(fd, ioctl) } {
-        Ok(()) => Ok(()),
+        Ok(()) => {
+            crate::scoped_log!(
+                debug,
+                "hymofs:ioctl",
+                "complete: name={}, opcode=0x{:x}",
+                name,
+                request
+            );
+            Ok(())
+        }
         Err(err) => {
             let context = ioctl_error_context(name, request, err);
+            crate::scoped_log!(
+                error,
+                "hymofs:ioctl",
+                "failed: name={}, opcode=0x{:x}, errno={}",
+                name,
+                request,
+                err.raw_os_error()
+            );
             Err(anyhow::Error::new(err).context(context))
         }
     }
 }
 
 fn ioctl_with_arg<T>(name: &str, request: HymoIoctlRequest, arg: &mut T) -> Result<()> {
+    crate::scoped_log!(
+        debug,
+        "hymofs:ioctl",
+        "start: name={}, opcode=0x{:x}, has_arg=true",
+        name,
+        request
+    );
     let fd = unsafe { BorrowedFd::borrow_raw(fetch_anon_fd()?) };
     let ioctl = HymoIoctlArg::new(request, arg);
     match unsafe { ioctl::ioctl(fd, ioctl) } {
-        Ok(()) => Ok(()),
+        Ok(()) => {
+            crate::scoped_log!(
+                debug,
+                "hymofs:ioctl",
+                "complete: name={}, opcode=0x{:x}",
+                name,
+                request
+            );
+            Ok(())
+        }
         Err(err) => {
             let context = ioctl_error_context(name, request, err);
+            crate::scoped_log!(
+                error,
+                "hymofs:ioctl",
+                "failed: name={}, opcode=0x{:x}, errno={}",
+                name,
+                request,
+                err.raw_os_error()
+            );
             Err(anyhow::Error::new(err).context(context))
         }
     }
@@ -796,6 +861,14 @@ fn ensure_kernel_err(context: &str, kernel_err: c_int) -> Result<()> {
 }
 
 fn list_ioctl(request: HymoIoctlRequest, capacity: usize, description: &str) -> Result<String> {
+    crate::scoped_log!(
+        debug,
+        "hymofs:list_ioctl",
+        "start: description={}, opcode=0x{:x}, capacity={}",
+        description,
+        request,
+        capacity
+    );
     let mut buf = vec![0u8; capacity];
     let mut arg = HymoSyscallListArg {
         buf: buf.as_mut_ptr() as *mut c_char,
@@ -805,7 +878,15 @@ fn list_ioctl(request: HymoIoctlRequest, capacity: usize, description: &str) -> 
         .with_context(|| format!("failed to query HymoFS {description}"))?;
 
     let len = buf.iter().position(|byte| *byte == 0).unwrap_or(buf.len());
-    Ok(String::from_utf8_lossy(&buf[..len]).into_owned())
+    let output = String::from_utf8_lossy(&buf[..len]).into_owned();
+    crate::scoped_log!(
+        debug,
+        "hymofs:list_ioctl",
+        "complete: description={}, bytes={}",
+        description,
+        len
+    );
+    Ok(output)
 }
 
 pub fn get_protocol_version() -> Result<c_int> {
@@ -818,6 +899,12 @@ pub fn check_status() -> HymoFsStatus {
     if let Ok(cache) = STATUS_CACHE.lock()
         && cache.checked
     {
+        crate::scoped_log!(
+            debug,
+            "hymofs:status",
+            "complete: source=cache, status={}",
+            status_name(cache.status)
+        );
         return cache.status;
     }
 
@@ -837,11 +924,20 @@ pub fn check_status() -> HymoFsStatus {
         cache.status = status;
     }
 
+    crate::scoped_log!(
+        debug,
+        "hymofs:status",
+        "complete: source=probe, status={}",
+        status_name(status)
+    );
+
     status
 }
 
 pub fn can_operate() -> bool {
-    matches!(check_status(), HymoFsStatus::Available)
+    let operable = matches!(check_status(), HymoFsStatus::Available);
+    crate::scoped_log!(debug, "hymofs:status", "complete: can_operate={}", operable);
+    operable
 }
 
 pub fn clear_rules() -> Result<()> {

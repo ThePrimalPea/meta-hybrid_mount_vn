@@ -23,7 +23,18 @@ use crate::{
 
 pub fn handle_api_system(cli: &Cli) -> Result<()> {
     let config = load_effective_config(cli)?;
-    let state = RuntimeState::load().unwrap_or_default();
+    let state = match RuntimeState::load() {
+        Ok(state) => state,
+        Err(err) => {
+            crate::scoped_log!(
+                debug,
+                "cli:api:system",
+                "fallback: reason=runtime_state_load_failed, error={:#}",
+                err
+            );
+            RuntimeState::default()
+        }
+    };
     let payload = api::build_system_payload(&config, &state);
     println!(
         "{}",
@@ -33,7 +44,18 @@ pub fn handle_api_system(cli: &Cli) -> Result<()> {
 }
 
 pub fn handle_api_storage() -> Result<()> {
-    let state = RuntimeState::load().unwrap_or_default();
+    let state = match RuntimeState::load() {
+        Ok(state) => state,
+        Err(err) => {
+            crate::scoped_log!(
+                debug,
+                "cli:api:storage",
+                "fallback: reason=runtime_state_load_failed, error={:#}",
+                err
+            );
+            RuntimeState::default()
+        }
+    };
     let payload = api::build_storage_payload(&state);
     println!(
         "{}",
@@ -44,7 +66,18 @@ pub fn handle_api_storage() -> Result<()> {
 }
 
 pub fn handle_api_mount_stats() -> Result<()> {
-    let state = RuntimeState::load().unwrap_or_default();
+    let state = match RuntimeState::load() {
+        Ok(state) => state,
+        Err(err) => {
+            crate::scoped_log!(
+                debug,
+                "cli:api:mount_stats",
+                "fallback: reason=runtime_state_load_failed, error={:#}",
+                err
+            );
+            RuntimeState::default()
+        }
+    };
     let payload = api::build_mount_stats_payload(&state);
     println!(
         "{}",
@@ -55,7 +88,18 @@ pub fn handle_api_mount_stats() -> Result<()> {
 
 pub fn handle_api_mount_topology(cli: &Cli) -> Result<()> {
     let config = load_effective_config(cli)?;
-    let state = RuntimeState::load().unwrap_or_default();
+    let state = match RuntimeState::load() {
+        Ok(state) => state,
+        Err(err) => {
+            crate::scoped_log!(
+                debug,
+                "cli:api:mount_topology",
+                "fallback: reason=runtime_state_load_failed, error={:#}",
+                err
+            );
+            RuntimeState::default()
+        }
+    };
     let payload = api::build_mount_topology_payload(&config, &state);
     println!(
         "{}",

@@ -39,16 +39,45 @@ fn ensure_parent_dir(path: &Path) -> Result<()> {
 }
 
 fn load_merged_config(main_path: &Path, allow_missing_main: bool) -> Result<Config> {
-    Ok(if main_path.exists() {
+    crate::scoped_log!(
+        debug,
+        "conf:store:load_merged",
+        "start: path={}, allow_missing_main={}",
+        main_path.display(),
+        allow_missing_main
+    );
+
+    let config = if main_path.exists() {
         let content = fs::read_to_string(main_path)
             .with_context(|| format!("failed to read config file {}", main_path.display()))?;
         toml::from_str::<Config>(&content)
             .with_context(|| format!("failed to parse config file {}", main_path.display()))?
     } else if allow_missing_main {
+        crate::scoped_log!(
+            debug,
+            "conf:store:load_merged",
+            "fallback: reason=config_missing, path={}",
+            main_path.display()
+        );
         Config::default()
     } else {
+        crate::scoped_log!(
+            error,
+            "conf:store:load_merged",
+            "failed: reason=config_missing, path={}",
+            main_path.display()
+        );
         bail!("config file not found: {}", main_path.display());
-    })
+    };
+
+    crate::scoped_log!(
+        debug,
+        "conf:store:load_merged",
+        "complete: path={}",
+        main_path.display()
+    );
+
+    Ok(config)
 }
 
 impl Config {
@@ -122,9 +151,21 @@ impl ConfigSession {
     }
 
     pub fn save(&self) -> Result<PathBuf> {
+        crate::scoped_log!(
+            debug,
+            "conf:store:save",
+            "start: path={}",
+            self.path.display()
+        );
         self.persisted
             .save_to_file(&self.path)
             .with_context(|| format!("Failed to save config file to {}", self.path.display()))?;
+        crate::scoped_log!(
+            debug,
+            "conf:store:save",
+            "complete: path={}",
+            self.path.display()
+        );
         Ok(self.path.clone())
     }
 

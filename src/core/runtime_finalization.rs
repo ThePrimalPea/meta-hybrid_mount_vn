@@ -30,6 +30,17 @@ pub fn finalize(
     mount_point: &Path,
     result: &ExecutionResult,
 ) -> Result<()> {
+    crate::scoped_log!(
+        info,
+        "runtime_finalization",
+        "start: storage_mode={}, mount_point={}, overlay_modules={}, magic_modules={}, hymofs_modules={}",
+        storage_mode.as_str(),
+        mount_point.display(),
+        result.overlay_module_ids.len(),
+        result.magic_module_ids.len(),
+        result.hymofs_module_ids.len()
+    );
+
     module_status::update_description(
         storage_mode,
         result.overlay_module_ids.len(),
@@ -39,8 +50,22 @@ pub fn finalize(
 
     let state = RuntimeState::build_from_execution(config, storage_mode, mount_point, result);
     if let Err(err) = state.save() {
-        crate::scoped_log!(warn, "finalize", "save runtime state failed: {:#}", err);
+        crate::scoped_log!(
+            warn,
+            "runtime_finalization",
+            "save runtime state failed: {:#}",
+            err
+        );
     }
+
+    crate::scoped_log!(
+        info,
+        "runtime_finalization",
+        "complete: active_mounts={}, mount_errors={}, skip_mount_modules={}",
+        state.active_mounts.len(),
+        state.mount_error_modules.len(),
+        state.skip_mount_modules.len()
+    );
 
     Ok(())
 }

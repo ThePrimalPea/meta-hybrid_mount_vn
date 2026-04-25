@@ -27,15 +27,23 @@ pub fn detect_mount_source() -> String {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         if ksu::version().is_some() {
+            crate::scoped_log!(debug, "sys:mount_source", "complete: source=KSU");
             return "KSU".to_string();
         }
     }
+    crate::scoped_log!(debug, "sys:mount_source", "complete: source=APatch");
     "APatch".to_string()
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn is_mounted<P: AsRef<Path>>(path: P) -> bool {
     let Some(path_str) = path.as_ref().to_str() else {
+        crate::scoped_log!(
+            debug,
+            "sys:is_mounted",
+            "skip: reason=non_utf8_path, path={}",
+            path.as_ref().display()
+        );
         return false;
     };
 
@@ -54,6 +62,13 @@ pub fn is_mounted<P: AsRef<Path>>(path: P) -> bool {
                 .into_iter()
                 .any(|m| m.mount_point.to_string_lossy() == search);
         }
+
+        crate::scoped_log!(
+            debug,
+            "sys:is_mounted",
+            "fallback: reason=mountinfo_unavailable, path={}",
+            search
+        );
     }
 
     false
@@ -61,6 +76,13 @@ pub fn is_mounted<P: AsRef<Path>>(path: P) -> bool {
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn mount_tmpfs(target: &Path, source: &str) -> Result<()> {
+    crate::scoped_log!(
+        info,
+        "sys:mount_tmpfs",
+        "start: source={}, target={}",
+        source,
+        target.display()
+    );
     ensure_dir_exists(target)?;
     mount(
         source,
@@ -70,6 +92,13 @@ pub fn mount_tmpfs(target: &Path, source: &str) -> Result<()> {
         Some(c"mode=0755"),
     )
     .context("Failed to mount tmpfs")?;
+    crate::scoped_log!(
+        info,
+        "sys:mount_tmpfs",
+        "complete: source={}, target={}",
+        source,
+        target.display()
+    );
     Ok(())
 }
 
@@ -79,6 +108,12 @@ pub fn mount_tmpfs(_target: &Path, _source: &str) -> Result<()> {
 }
 
 pub fn repair_image(image_path: &Path) -> Result<()> {
+    crate::scoped_log!(
+        info,
+        "sys:repair_image",
+        "start: image={}",
+        image_path.display()
+    );
     let status = Command::new("e2fsck")
         .args(["-y", "-f"])
         .arg(image_path)
@@ -86,9 +121,34 @@ pub fn repair_image(image_path: &Path) -> Result<()> {
         .context("Failed to execute e2fsck")?;
 
     match status.code() {
-        Some(code) if code > 2 => bail!("e2fsck failed with exit code: {}", code),
-        None => bail!("e2fsck terminated by signal"),
-        _ => {}
+        Some(code) if code > 2 => {
+            crate::scoped_log!(
+                error,
+                "sys:repair_image",
+                "failed: image={}, exit_code={}",
+                image_path.display(),
+                code
+            );
+            bail!("e2fsck failed with exit code: {}", code)
+        }
+        None => {
+            crate::scoped_log!(
+                error,
+                "sys:repair_image",
+                "failed: image={}, reason=terminated_by_signal",
+                image_path.display()
+            );
+            bail!("e2fsck terminated by signal")
+        }
+        _ => {
+            crate::scoped_log!(
+                info,
+                "sys:repair_image",
+                "complete: image={}, exit_code={}",
+                image_path.display(),
+                status.code().unwrap_or_default()
+            );
+        }
     }
     Ok(())
 }

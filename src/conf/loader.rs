@@ -23,26 +23,63 @@ use crate::{
 
 fn load_default_config() -> Result<Config> {
     let default_path = Path::new(defs::CONFIG_FILE);
+    crate::scoped_log!(
+        debug,
+        "conf:loader",
+        "start: mode=default, path={}",
+        default_path.display()
+    );
     if !default_path.exists() {
+        crate::scoped_log!(
+            debug,
+            "conf:loader",
+            "fallback: mode=default, reason=config_missing, path={}",
+            default_path.display()
+        );
         return Ok(Config::default());
     }
 
-    Config::load_optional_from_file(default_path).with_context(|| {
+    let config = Config::load_optional_from_file(default_path).with_context(|| {
         format!(
             "Failed to load config from default path: {}",
             default_path.display()
         )
-    })
+    })?;
+
+    crate::scoped_log!(
+        debug,
+        "conf:loader",
+        "complete: mode=default, path={}",
+        default_path.display()
+    );
+
+    Ok(config)
 }
 
 pub fn load_config(cli: &Cli) -> Result<Config> {
     if let Some(config_path) = &cli.config {
-        return Config::load_optional_from_file(config_path).with_context(|| {
+        crate::scoped_log!(
+            debug,
+            "conf:loader",
+            "start: mode=custom, path={}",
+            config_path.display()
+        );
+
+        let config = Config::load_optional_from_file(config_path).with_context(|| {
             format!(
                 "Failed to load config from custom path: {}",
                 config_path.display()
             )
-        });
+        })?;
+
+        crate::scoped_log!(
+            debug,
+            "conf:loader",
+            "complete: mode=custom, path={}",
+            config_path.display()
+        );
+
+        return Ok(config);
     }
 
     load_default_config()
