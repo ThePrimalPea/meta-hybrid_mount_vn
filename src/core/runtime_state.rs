@@ -111,6 +111,16 @@ impl MountStatistics {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct ModuleModeStats {
+    #[serde(default)]
+    pub overlayfs: usize,
+    #[serde(default)]
+    pub magicmount: usize,
+    #[serde(default)]
+    pub hymofs: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HymoFsRuntimeInfo {
     #[serde(default)]
@@ -166,6 +176,8 @@ pub struct RuntimeState {
     #[serde(default)]
     pub mount_stats: MountStatistics,
     #[serde(default)]
+    pub mode_stats: ModuleModeStats,
+    #[serde(default)]
     pub hymofs: HymoFsRuntimeInfo,
 }
 
@@ -179,6 +191,7 @@ impl RuntimeState {
         hymofs_modules: Vec<String>,
         active_mounts: Vec<String>,
         mount_stats: MountStatistics,
+        mode_stats: ModuleModeStats,
         hymofs: HymoFsRuntimeInfo,
     ) -> Self {
         let start = SystemTime::now();
@@ -206,6 +219,7 @@ impl RuntimeState {
             active_mounts,
             tmpfs_xattr_supported,
             mount_stats,
+            mode_stats,
             hymofs,
         };
 
@@ -283,6 +297,7 @@ impl RuntimeState {
             result.hymofs_module_ids.clone(),
             collect_active_mounts(result),
             result.mount_stats.clone(),
+            collect_mode_stats(result),
             hymofs,
         );
         state.mount_error_modules = previous_state.mount_error_modules;
@@ -337,6 +352,15 @@ impl RuntimeState {
             content.len()
         );
         Ok(state)
+    }
+}
+
+
+fn collect_mode_stats(result: &ExecutionResult) -> ModuleModeStats {
+    ModuleModeStats {
+        overlayfs: result.overlay_module_ids.len(),
+        magicmount: result.magic_module_ids.len(),
+        hymofs: result.hymofs_module_ids.len(),
     }
 }
 
