@@ -43,14 +43,19 @@ where
 {
     let path = source.as_ref();
     if !path.exists() {
-        println!("Source path does not exist");
+        crate::scoped_log!(warn, "overlayfs:utils", "source path does not exist");
     } else {
         let metadata = fs::metadata(path)?;
         let permissions = metadata.permissions();
         let mode = permissions.mode();
 
         if permissions.readonly() {
-            println!("File permissions: {:o} (octal)", mode & 0o777);
+            crate::scoped_log!(
+                debug,
+                "overlayfs:utils",
+                "file permissions(octal): {:o}",
+                mode & 0o777
+            );
         }
     }
 

@@ -72,6 +72,5 @@ fn set_description(desc_text: &str) {
     if let Ok(status) = status
         && status.success()
     {
-        return;
     }
 }
