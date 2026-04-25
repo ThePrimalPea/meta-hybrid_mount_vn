@@ -14,71 +14,26 @@
 
 use std::{collections::HashSet, fs, path::Path};
 
-use crate::core::inventory;
-
-const MANAGED_PARTITION_SEED: &[&str] = &[
-    "system",
-    "vendor",
-    "product",
-    "system_ext",
-    "odm",
-    "oem",
-    "apex",
-];
-
-fn is_partition_candidate_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    matches!(chars.next(), Some(ch) if ch.is_ascii_alphabetic())
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-}
+use crate::defs;
 
 fn partition_root_exists(name: &str) -> bool {
     fs::symlink_metadata(Path::new("/").join(name)).is_ok()
 }
 
-pub fn discover_partition_names(moduledir: &Path, extra_partitions: &[String]) -> Vec<String> {
-    let mut names = MANAGED_PARTITION_SEED
+pub fn discover_partition_names(_moduledir: &Path, extra_partitions: &[String]) -> Vec<String> {
+    let mut names = defs::MANAGED_PARTITIONS
         .iter()
-        .map(|partition| partition.to_string())
+        .copied()
+        .filter(|partition| partition_root_exists(partition))
+        .map(str::to_string)
         .collect::<Vec<_>>();
-    names.extend(extra_partitions.iter().cloned());
 
-    if let Ok(modules) = fs::read_dir(moduledir) {
-        for module_entry in modules.flatten() {
-            let module_path = module_entry.path();
-            if !module_path.is_dir() {
-                continue;
-            }
-
-            let module_id = module_entry.file_name().to_string_lossy().into_owned();
-            if inventory::is_reserved_module_dir(&module_id)
-                || inventory::has_mount_block_marker(&module_path)
-            {
-                continue;
-            }
-
-            let Ok(children) = fs::read_dir(&module_path) else {
-                continue;
-            };
-
-            for child_entry in children.flatten() {
-                let child_path = child_entry.path();
-                if !child_path.is_dir() {
-                    continue;
-                }
-
-                let Some(candidate) = child_entry.file_name().to_str().map(str::to_owned) else {
-                    continue;
-                };
-
-                if !is_partition_candidate_name(&candidate) || !partition_root_exists(&candidate) {
-                    continue;
-                }
-
-                names.push(candidate);
-            }
-        }
-    }
+    names.extend(
+        extra_partitions
+            .iter()
+            .filter(|partition| partition_root_exists(partition))
+            .cloned(),
+    );
 
     names.sort();
     names.dedup();
@@ -100,31 +55,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn alphabetic_start_valid() {
-        assert!(is_partition_candidate_name("system"));
-        assert!(is_partition_candidate_name("vendor"));
-        assert!(is_partition_candidate_name("a"));
+    fn only_keep_existing_root_partitions() {
+        let partitions = discover_partition_names(Path::new("/unused"), &[]);
+
+        for name in &partitions {
+            assert!(partition_root_exists(name));
+        }
     }
 
     #[test]
-    fn alphanumeric_and_underscore() {
-        assert!(is_partition_candidate_name("system_ext"));
-        assert!(is_partition_candidate_name("product_a1"));
-        assert!(is_partition_candidate_name("a_b_c"));
-    }
+    fn extra_partitions_require_existing_root() {
+        let extras = vec![
+            "tmp".to_string(),
+            "__definitely_not_a_real_partition__".to_string(),
+        ];
 
-    #[test]
-    fn non_alphabetic_start_invalid() {
-        assert!(!is_partition_candidate_name("1system"));
-        assert!(!is_partition_candidate_name("_vendor"));
-        assert!(!is_partition_candidate_name("-product"));
-    }
+        let partitions = discover_partition_names(Path::new("/unused"), &extras);
 
-    #[test]
-    fn special_chars_invalid() {
-        assert!(!is_partition_candidate_name("system/app"));
-        assert!(!is_partition_candidate_name("system@ext"));
-        assert!(!is_partition_candidate_name("system ext"));
-        assert!(!is_partition_candidate_name(""));
+        assert!(partitions.contains(&"tmp".to_string()));
+        assert!(!partitions.contains(&"__definitely_not_a_real_partition__".to_string()));
     }
 }

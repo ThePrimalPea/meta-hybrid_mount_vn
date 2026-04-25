@@ -45,3 +45,13 @@ pub const IGNORE_UNMOUNT_PARTITIONS: &[&str] = &[
     "/system/lib",
     "/system/lib64",
 ];
+
+pub const MANAGED_PARTITIONS: &[&str] = &[
+    "system",
+    "vendor",
+    "product",
+    "system_ext",
+    "odm",
+    "oem",
+    "apex",
+];
