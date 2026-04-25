@@ -118,8 +118,7 @@ KEY_volume_detect() {
     fi
   done
   ui_print "- Configured mode: $chosen_mode"
-  sed -i '/default_mode/d' "$BASE_DIR/config.toml"
-  echo "default_mode = \"$chosen_mode\"" >>"$BASE_DIR/config.toml"
+  sed -i "s/^default_mode = .*/default_mode = \"$chosen_mode\"/" "$BASE_DIR/config.toml"
 }
 
 if [ ! -f "$BASE_DIR/config.toml" ]; then
