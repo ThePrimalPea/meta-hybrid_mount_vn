@@ -70,7 +70,7 @@ jobs:
           git init "$SRC_ROOT"
           (
             cd "$SRC_ROOT"
-            git remote add origin "https://github.com/Anatdx/HymoFS.git"
+            git remote add origin "https://github.com/Anatdx/Kasumi.git"
             git fetch --depth 1 origin "${{ inputs.hymofs_ref }}"
             git checkout FETCH_HEAD
             SHA="$(git rev-parse HEAD)"
