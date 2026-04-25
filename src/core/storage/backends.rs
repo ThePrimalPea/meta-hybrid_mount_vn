@@ -16,18 +16,16 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::core::backend::StorageBackend;
+use crate::core::{backend::StorageBackend, storage::StorageMode};
 
 pub struct Ext4Backend {
     pub mount_point: PathBuf,
-    pub mode: String,
 }
 
 impl Ext4Backend {
     pub fn new(mount_point: &Path) -> Self {
         Self {
             mount_point: mount_point.to_path_buf(),
-            mode: "ext4".to_string(),
         }
     }
 }
@@ -41,21 +39,19 @@ impl StorageBackend for Ext4Backend {
         &self.mount_point
     }
 
-    fn mode(&self) -> &str {
-        &self.mode
+    fn mode(&self) -> StorageMode {
+        StorageMode::Ext4
     }
 }
 
 pub struct TmpfsBackend {
     pub mount_point: PathBuf,
-    pub mode: String,
 }
 
 impl TmpfsBackend {
     pub fn new(mount_point: &Path) -> Self {
         Self {
             mount_point: mount_point.to_path_buf(),
-            mode: "tmpfs".to_string(),
         }
     }
 }
@@ -69,7 +65,7 @@ impl StorageBackend for TmpfsBackend {
         &self.mount_point
     }
 
-    fn mode(&self) -> &str {
-        &self.mode
+    fn mode(&self) -> StorageMode {
+        StorageMode::Tmpfs
     }
 }

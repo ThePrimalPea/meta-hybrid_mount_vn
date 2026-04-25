@@ -132,7 +132,7 @@ impl<'a> HymofsCoordinator<'a> {
             info,
             "hymofs:coordinator",
             "mirror storage complete: mode={}, target={}",
-            hymofs_storage.mode(),
+            hymofs_storage.mode().as_str(),
             self.config.hymofs.mirror_path.display()
         );
 

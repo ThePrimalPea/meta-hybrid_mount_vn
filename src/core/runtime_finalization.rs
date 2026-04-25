@@ -18,12 +18,15 @@ use anyhow::Result;
 
 use crate::{
     conf::config::Config,
-    core::{module_status, ops::executor::ExecutionResult, runtime_state::RuntimeState},
+    core::{
+        module_status, ops::executor::ExecutionResult, runtime_state::RuntimeState,
+        storage::StorageMode,
+    },
 };
 
 pub fn finalize(
     config: &Config,
-    storage_mode: &str,
+    storage_mode: StorageMode,
     mount_point: &Path,
     result: &ExecutionResult,
 ) -> Result<()> {

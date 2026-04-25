@@ -16,8 +16,10 @@ use std::path::Path;
 
 use anyhow::Result;
 
+use crate::core::storage::StorageMode;
+
 pub trait StorageBackend: Send + Sync {
     fn commit(&mut self, disable_umount: bool) -> Result<()>;
     fn mount_point(&self) -> &Path;
-    fn mode(&self) -> &str;
+    fn mode(&self) -> StorageMode;
 }

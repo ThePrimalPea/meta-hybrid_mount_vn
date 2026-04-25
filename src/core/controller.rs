@@ -105,7 +105,7 @@ impl MountController<Init> {
             info,
             "controller:init_storage",
             "complete: mode={}, mount_point={}",
-            handle.mode(),
+            handle.mode().as_str(),
             handle.mount_point().display()
         );
 
@@ -256,7 +256,7 @@ impl MountController<Executed> {
 fn clean_up(
     tempdir: &Path,
     hymofs_mirror_path: &Path,
-    storage_mode: &str,
+    storage_mode: crate::core::storage::StorageMode,
     disable_umount: bool,
 ) -> Result<()> {
     if disable_umount {
@@ -282,7 +282,11 @@ fn clean_up(
     clean_up_path(tempdir, hymofs_mirror_path, storage_mode)
 }
 
-fn clean_up_path(tempdir: &Path, hymofs_mirror_path: &Path, storage_mode: &str) -> Result<()> {
+fn clean_up_path(
+    tempdir: &Path,
+    hymofs_mirror_path: &Path,
+    storage_mode: crate::core::storage::StorageMode,
+) -> Result<()> {
     if tempdir == hymofs_mirror_path {
         crate::scoped_log!(
             info,
@@ -337,10 +341,7 @@ fn clean_up_path(tempdir: &Path, hymofs_mirror_path: &Path, storage_mode: &str) 
     detach_tempdir_mount(tempdir)?;
     remove_path(tempdir)?;
 
-    if storage_mode == "ext4" {
-        remove_path(Path::new(crate::defs::MODULES_IMG_FILE))?;
-    }
-
+    crate::core::storage::cleanup_artifacts(storage_mode)?;
     Ok(())
 }
 

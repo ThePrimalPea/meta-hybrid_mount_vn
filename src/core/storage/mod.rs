@@ -31,6 +31,21 @@ use crate::mount::umount_mgr::send_umountable;
 use crate::sys::mount::is_mounted;
 use crate::{core::backend::StorageBackend, defs};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageMode {
+    Tmpfs,
+    Ext4,
+}
+
+impl StorageMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Tmpfs => "tmpfs",
+            Self::Ext4 => "ext4",
+        }
+    }
+}
+
 pub struct StorageHandle {
     pub backend: Box<dyn StorageBackend>,
 }
@@ -50,7 +65,7 @@ impl StorageHandle {
         self.backend.mount_point()
     }
 
-    pub fn mode(&self) -> &str {
+    pub fn mode(&self) -> StorageMode {
         self.backend.mode()
     }
 }
@@ -112,6 +127,35 @@ fn reset_image_files(img_path: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+pub fn cleanup_artifacts(storage_mode: StorageMode) -> Result<()> {
+    if should_cleanup_image(storage_mode) {
+        remove_image_file(Path::new(defs::MODULES_IMG_FILE))?;
+    }
+
+    Ok(())
+}
+
+fn should_cleanup_image(storage_mode: StorageMode) -> bool {
+    matches!(storage_mode, StorageMode::Ext4)
+}
+
+fn remove_image_file(path: &Path) -> Result<()> {
+    match fs::remove_file(path) {
+        Ok(_) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) if err.raw_os_error() == Some(libc::EBUSY) => {
+            crate::scoped_log!(
+                warn,
+                "storage",
+                "cleanup skipped: path={}, reason=resource_busy",
+                path.display()
+            );
+            Ok(())
+        }
+        Err(err) => Err(err.into()),
+    }
 }
 
 fn detach_existing_mount(mnt_base: &Path) {
@@ -215,4 +259,21 @@ fn try_setup_tmpfs(target: &Path, mount_source: &str) -> Result<bool> {
         }
     }
     Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{StorageMode, should_cleanup_image};
+
+    #[test]
+    fn storage_mode_as_str_matches_expected_values() {
+        assert_eq!(StorageMode::Tmpfs.as_str(), "tmpfs");
+        assert_eq!(StorageMode::Ext4.as_str(), "ext4");
+    }
+
+    #[test]
+    fn cleanup_image_only_for_ext4_mode() {
+        assert!(!should_cleanup_image(StorageMode::Tmpfs));
+        assert!(should_cleanup_image(StorageMode::Ext4));
+    }
 }

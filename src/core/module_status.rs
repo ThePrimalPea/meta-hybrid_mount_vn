@@ -18,10 +18,10 @@ use std::{
     path::Path,
 };
 
-use crate::{defs, sys::fs::atomic_write};
+use crate::{core::storage::StorageMode, defs, sys::fs::atomic_write};
 
 pub fn update_description(
-    storage_mode: &str,
+    storage_mode: StorageMode,
     overlay_count: usize,
     magic_count: usize,
     hymofs_count: usize,
@@ -33,13 +33,13 @@ pub fn update_description(
     }
 
     let mode_str = match storage_mode {
-        "tmpfs" => "Tmpfs",
-        _ => "Ext4",
+        StorageMode::Tmpfs => "Tmpfs",
+        StorageMode::Ext4 => "Ext4",
     };
 
     let status_emoji = match storage_mode {
-        "tmpfs" => "🐾",
-        _ => "💿",
+        StorageMode::Tmpfs => "🐾",
+        StorageMode::Ext4 => "💿",
     };
 
     let mut stats = Vec::new();

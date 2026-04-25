@@ -218,14 +218,14 @@ impl RuntimeState {
 
     pub fn build_from_execution(
         config: &Config,
-        storage_mode: &str,
+        storage_mode: crate::core::storage::StorageMode,
         mount_point: &Path,
         result: &ExecutionResult,
     ) -> Self {
         let previous_state = Self::load().unwrap_or_default();
         let hymofs = hymofs::collect_runtime_info(config);
         let mut state = Self::new(
-            storage_mode.to_string(),
+            storage_mode.as_str().to_string(),
             mount_point.to_path_buf(),
             result.overlay_module_ids.clone(),
             result.magic_module_ids.clone(),
