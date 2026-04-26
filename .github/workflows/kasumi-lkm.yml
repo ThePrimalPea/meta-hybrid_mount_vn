@@ -128,7 +128,22 @@ jobs:
 
               mkdir -p "$OUT"
               KO_FILE="${KMI}_${TARGET_ARCH}_kasumi_lkm.ko"
-              cp "$SRC/kasumi_lkm.ko" "$OUT/$KO_FILE"
+              if [ -f "$SRC/kasumi_lkm.ko" ]; then
+                BUILT_KO="$SRC/kasumi_lkm.ko"
+              elif [ -f "$SRC/hymofs_lkm.ko" ]; then
+                BUILT_KO="$SRC/hymofs_lkm.ko"
+              else
+                mapfile -t BUILT_KOS < <(find "$SRC" -maxdepth 1 -type f -name "*.ko" | sort)
+                if [ "${#BUILT_KOS[@]}" -ne 1 ]; then
+                  echo "Expected exactly one built .ko under $SRC, found ${#BUILT_KOS[@]}:"
+                  find "$SRC" -maxdepth 1 -type f -name "*.ko" -print | sort
+                  exit 1
+                fi
+                BUILT_KO="${BUILT_KOS[0]}"
+              fi
+
+              echo "Staging built module: $BUILT_KO -> $OUT/$KO_FILE"
+              cp "$BUILT_KO" "$OUT/$KO_FILE"
               llvm-strip -d "$OUT/$KO_FILE" 2>/dev/null || true
               ls -la "$OUT/"
             '
