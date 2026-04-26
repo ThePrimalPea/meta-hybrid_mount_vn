@@ -24,7 +24,7 @@ pub fn update_description(
     storage_mode: StorageMode,
     overlay_count: usize,
     magic_count: usize,
-    hymofs_count: usize,
+    kasumi_count: usize,
 ) {
     let prop_path = Path::new(defs::MODULE_PROP_FILE);
 
@@ -43,8 +43,8 @@ pub fn update_description(
     };
 
     let mut stats = Vec::new();
-    if hymofs_count > 0 {
-        stats.push(format!("HymoFS: {}", hymofs_count));
+    if kasumi_count > 0 {
+        stats.push(format!("Kasumi: {}", kasumi_count));
     }
     stats.push(format!("Overlay: {}", overlay_count));
     stats.push(format!("Magic: {}", magic_count));

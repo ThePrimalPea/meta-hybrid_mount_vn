@@ -26,41 +26,41 @@ use crate::{
     },
     defs,
     domain::MountMode,
-    mount::hymofs,
+    mount::kasumi,
 };
 
 #[derive(Debug, Clone, Copy)]
-pub struct HymofsPlanningState {
+pub struct KasumiPlanningState {
     pub requested: bool,
     pub available: bool,
 }
 
-pub struct HymofsCoordinator<'a> {
+pub struct KasumiCoordinator<'a> {
     config: &'a Config,
 }
 
-impl<'a> HymofsCoordinator<'a> {
+impl<'a> KasumiCoordinator<'a> {
     pub fn new(config: &'a Config) -> Self {
         Self { config }
     }
 
-    pub fn module_requests_hymofs(module: &Module) -> bool {
-        matches!(module.rules.default_mode, MountMode::Hymofs)
+    pub fn module_requests_kasumi(module: &Module) -> bool {
+        matches!(module.rules.default_mode, MountMode::Kasumi)
             || module
                 .rules
                 .paths
                 .values()
-                .any(|mode| matches!(mode, MountMode::Hymofs))
+                .any(|mode| matches!(mode, MountMode::Kasumi))
     }
 
     pub fn requested_by_modules(modules: &[Module]) -> bool {
-        modules.iter().any(Self::module_requests_hymofs)
+        modules.iter().any(Self::module_requests_kasumi)
     }
 
     pub fn requested_module_ids(modules: &[Module]) -> Vec<String> {
         modules
             .iter()
-            .filter(|module| Self::module_requests_hymofs(module))
+            .filter(|module| Self::module_requests_kasumi(module))
             .map(|module| module.id.clone())
             .collect()
     }
@@ -69,10 +69,10 @@ impl<'a> HymofsCoordinator<'a> {
         &self,
         capabilities: &BackendCapabilities,
         modules: &[Module],
-    ) -> HymofsPlanningState {
-        HymofsPlanningState {
+    ) -> KasumiPlanningState {
+        KasumiPlanningState {
             requested: Self::requested_by_modules(modules),
-            available: capabilities.can_use_hymofs(),
+            available: capabilities.can_use_kasumi(),
         }
     }
 
@@ -85,10 +85,10 @@ impl<'a> HymofsCoordinator<'a> {
         planning.requested && planning.available
     }
 
-    pub fn hymofs_modules<'m>(&self, modules: &'m [Module]) -> Vec<&'m Module> {
+    pub fn kasumi_modules<'m>(&self, modules: &'m [Module]) -> Vec<&'m Module> {
         modules
             .iter()
-            .filter(|module| Self::module_requests_hymofs(module))
+            .filter(|module| Self::module_requests_kasumi(module))
             .collect()
     }
 
@@ -101,64 +101,64 @@ impl<'a> HymofsCoordinator<'a> {
             return Ok(());
         }
 
-        let hymofs_modules = self.hymofs_modules(modules);
-        let hymofs_sources = hymofs_modules
+        let kasumi_modules = self.kasumi_modules(modules);
+        let kasumi_sources = kasumi_modules
             .iter()
             .map(|module| module.source_path.clone())
             .collect::<Vec<PathBuf>>();
 
         crate::scoped_log!(
             info,
-            "hymofs:coordinator",
+            "kasumi:coordinator",
             "mirror storage start: target={}, modules={}",
-            self.config.hymofs.mirror_path.display(),
-            hymofs_modules.len()
+            self.config.kasumi.mirror_path.display(),
+            kasumi_modules.len()
         );
 
-        let mut hymofs_storage = storage::setup_with_sources(
-            &self.config.hymofs.mirror_path,
-            &hymofs_sources,
+        let mut kasumi_storage = storage::setup_with_sources(
+            &self.config.kasumi.mirror_path,
+            &kasumi_sources,
             matches!(self.config.overlay_mode, OverlayMode::Ext4),
             &self.config.mountsource,
             true,
-            Path::new(defs::HYMOFS_IMG_FILE),
+            Path::new(defs::KASUMI_IMG_FILE),
         )?;
 
-        let hymofs_modules = hymofs_modules.into_iter().cloned().collect::<Vec<_>>();
-        sync::perform_sync(&hymofs_modules, hymofs_storage.mount_point(), self.config)?;
-        hymofs_storage.commit(true)?;
+        let kasumi_modules = kasumi_modules.into_iter().cloned().collect::<Vec<_>>();
+        sync::perform_sync(&kasumi_modules, kasumi_storage.mount_point(), self.config)?;
+        kasumi_storage.commit(true)?;
 
         crate::scoped_log!(
             info,
-            "hymofs:coordinator",
+            "kasumi:coordinator",
             "mirror storage complete: mode={}, target={}",
-            hymofs_storage.mode().as_str(),
-            self.config.hymofs.mirror_path.display()
+            kasumi_storage.mode().as_str(),
+            self.config.kasumi.mirror_path.display()
         );
 
         Ok(())
     }
 
     pub fn reset_runtime(&self) -> Result<bool> {
-        hymofs::reset_runtime(self.config)
+        kasumi::reset_runtime(self.config)
     }
 
     pub fn apply_runtime(&self, plan: &mut MountPlan, modules: &[Module]) -> Result<bool> {
-        hymofs::apply(plan, modules, self.config)
+        kasumi::apply(plan, modules, self.config)
     }
 
     pub fn hide_overlay_xattrs(&self, target: &Path) {
-        if !self.config.hymofs.enabled
-            || !self.config.hymofs.enable_hidexattr
-            || !hymofs::can_operate(self.config)
+        if !self.config.kasumi.enabled
+            || !self.config.kasumi.enable_hidexattr
+            || !kasumi::can_operate(self.config)
         {
             return;
         }
 
-        if let Err(err) = crate::sys::hymofs::hide_overlay_xattrs(target) {
+        if let Err(err) = crate::sys::kasumi::hide_overlay_xattrs(target) {
             crate::scoped_log!(
                 warn,
-                "hymofs:coordinator",
+                "kasumi:coordinator",
                 "hide overlay xattrs failed: target={}, error={:#}",
                 target.display(),
                 err

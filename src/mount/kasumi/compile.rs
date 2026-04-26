@@ -27,7 +27,7 @@ use crate::{
     conf::config,
     core::{
         inventory::Module,
-        ops::plan::{HymofsAddRule, HymofsMergeRule, MountPlan},
+        ops::plan::{KasumiAddRule, KasumiMergeRule, MountPlan},
     },
     defs,
     domain::MountMode,
@@ -36,18 +36,18 @@ use crate::{
 
 #[derive(Debug, Default)]
 pub(super) struct CompiledRules {
-    pub(super) add_rules: Vec<HymofsAddRule>,
-    pub(super) merge_rules: Vec<HymofsMergeRule>,
+    pub(super) add_rules: Vec<KasumiAddRule>,
+    pub(super) merge_rules: Vec<KasumiMergeRule>,
     pub(super) hide_rules: Vec<String>,
 }
 
 fn mirror_module_root(config: &config::Config, module: &Module) -> Result<PathBuf> {
-    let module_root = config.hymofs.mirror_path.join(&module.id);
+    let module_root = config.kasumi.mirror_path.join(&module.id);
     if module_root.exists() {
         Ok(module_root)
     } else {
         bail!(
-            "missing HymoFS mirror content for module {} at {}",
+            "missing Kasumi mirror content for module {} at {}",
             module.id,
             module_root.display()
         )
@@ -57,7 +57,7 @@ fn mirror_module_root(config: &config::Config, module: &Module) -> Result<PathBu
 fn build_dtype(path: &Path) -> Result<(i32, bool)> {
     let metadata = fs::symlink_metadata(path).with_context(|| {
         format!(
-            "failed to read metadata for hymofs source {}",
+            "failed to read metadata for kasumi source {}",
             path.display()
         )
     })?;
@@ -91,7 +91,7 @@ fn build_dtype(path: &Path) -> Result<(i32, bool)> {
 pub(super) fn log_compiled_rule_summary(compiled: &CompiledRules, user_hide_paths: &[PathBuf]) {
     crate::scoped_log!(
         debug,
-        "mount:hymofs",
+        "mount:kasumi",
         "compiled rules: add_rules={}, merge_rules={}, hide_rules={}, user_hide_rules={}",
         compiled.add_rules.len(),
         compiled.merge_rules.len(),
@@ -112,7 +112,7 @@ pub(super) fn compile_rules(
 ) -> Result<CompiledRules> {
     let system_root = Path::new("/");
     let managed_partitions = build_managed_partitions(config);
-    let active_ids: HashSet<&str> = plan.hymofs_module_ids.iter().map(String::as_str).collect();
+    let active_ids: HashSet<&str> = plan.kasumi_module_ids.iter().map(String::as_str).collect();
     let mut compiled = CompiledRules::default();
     let mut managed_partition_list: Vec<String> = managed_partitions.into_iter().collect();
     managed_partition_list.sort();
@@ -134,7 +134,7 @@ pub(super) fn compile_rules(
             if !scanned_partition_roots.insert(normalized_partition_root) {
                 crate::scoped_log!(
                     debug,
-                    "mount:hymofs",
+                    "mount:kasumi",
                     "partition root dedupe: module={}, partition={}, root={}",
                     module.id,
                     partition_name,
@@ -153,7 +153,7 @@ pub(super) fn compile_rules(
                     Err(err) => {
                         crate::scoped_log!(
                             warn,
-                            "mount:hymofs",
+                            "mount:kasumi",
                             "walk failed: module={}, partition={}, error={}",
                             module.id,
                             partition_name,
@@ -173,7 +173,7 @@ pub(super) fn compile_rules(
                     Err(err) => {
                         crate::scoped_log!(
                             warn,
-                            "mount:hymofs",
+                            "mount:kasumi",
                             "relative path failed: module={}, path={}, error={}",
                             module.id,
                             path.display(),
@@ -183,7 +183,7 @@ pub(super) fn compile_rules(
                     }
                 };
 
-                if !matches!(relative_mode(module, relative), MountMode::Hymofs) {
+                if !matches!(relative_mode(module, relative), MountMode::Kasumi) {
                     continue;
                 }
 
@@ -200,7 +200,7 @@ pub(super) fn compile_rules(
 
                 if entry.file_type().is_dir() {
                     if resolved_virtual_path.is_dir() {
-                        compiled.merge_rules.push(HymofsMergeRule {
+                        compiled.merge_rules.push(KasumiMergeRule {
                             target: target_key,
                             source: path.to_path_buf(),
                         });
@@ -215,7 +215,7 @@ pub(super) fn compile_rules(
                 {
                     crate::scoped_log!(
                         warn,
-                        "mount:hymofs",
+                        "mount:kasumi",
                         "symlink skip: module={}, path={}, reason=directory_target",
                         module.id,
                         resolved_virtual_path.display()
@@ -229,7 +229,7 @@ pub(super) fn compile_rules(
                     continue;
                 }
 
-                compiled.add_rules.push(HymofsAddRule {
+                compiled.add_rules.push(KasumiAddRule {
                     target: target_key,
                     source: path.to_path_buf(),
                     file_type,

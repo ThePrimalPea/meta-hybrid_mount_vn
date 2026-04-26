@@ -14,11 +14,11 @@
 
 use anyhow::{Context, Result};
 
-use super::shared::{load_effective_config, require_live_hymofs};
+use super::shared::{load_effective_config, require_live_kasumi};
 use crate::{
     conf::cli::Cli,
     core::{api, runtime_state::RuntimeState},
-    mount::hymofs as hymofs_mount,
+    mount::kasumi as kasumi_mount,
 };
 
 pub fn handle_api_system(cli: &Cli) -> Result<()> {
@@ -140,7 +140,7 @@ pub fn handle_api_features() -> Result<()> {
 
 pub fn handle_api_hooks(cli: &Cli) -> Result<()> {
     let config = load_effective_config(cli)?;
-    require_live_hymofs(&config, "read HymoFS hooks")?;
-    println!("{}", hymofs_mount::hook_lines()?.join("\n"));
+    require_live_kasumi(&config, "read Kasumi hooks")?;
+    println!("{}", kasumi_mount::hook_lines()?.join("\n"));
     Ok(())
 }

@@ -24,13 +24,13 @@ use crate::{
     core::runtime_state::RuntimeState,
     defs,
     sys::{
-        hymofs::{self, HymoFsStatus},
+        kasumi::{self, KasumiStatus},
         lkm::{self, LkmStatus},
     },
 };
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct HymofsRuleEntry {
+pub struct KasumiRuleEntry {
     #[serde(rename = "type")]
     pub rule_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -79,10 +79,10 @@ impl From<LkmStatus> for LkmPayload {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
-pub struct HymofsVersionPayload {
+pub struct KasumiVersionPayload {
     pub protocol_version: i32,
     pub kernel_version: i32,
-    pub hymofs_available: bool,
+    pub kasumi_available: bool,
     pub protocol_mismatch: bool,
     pub mismatch_message: Option<String>,
     pub active_modules: Vec<String>,
@@ -90,12 +90,14 @@ pub struct HymofsVersionPayload {
     pub mirror_path: PathBuf,
 }
 
-pub fn parse_hymofs_rule_listing(listing: &str) -> Vec<HymofsRuleEntry> {
+pub fn parse_kasumi_rule_listing(listing: &str) -> Vec<KasumiRuleEntry> {
     let mut rules = Vec::new();
 
     for raw_line in listing.lines() {
         let line = raw_line.trim();
         if line.is_empty()
+            || line.starts_with("Kasumi Protocol:")
+            || line.starts_with("Kasumi Enabled:")
             || line.starts_with("HymoFS Protocol:")
             || line.starts_with("HymoFS Enabled:")
         {
@@ -113,7 +115,7 @@ pub fn parse_hymofs_rule_listing(listing: &str) -> Vec<HymofsRuleEntry> {
                 let target = parts.next().map(ToString::to_string);
                 let source = parts.next().map(ToString::to_string);
                 let file_type = parts.next().and_then(|value| value.parse::<i32>().ok());
-                rules.push(HymofsRuleEntry {
+                rules.push(KasumiRuleEntry {
                     rule_type,
                     target,
                     source,
@@ -125,7 +127,7 @@ pub fn parse_hymofs_rule_listing(listing: &str) -> Vec<HymofsRuleEntry> {
             "MERGE" => {
                 let target = parts.next().map(ToString::to_string);
                 let source = parts.next().map(ToString::to_string);
-                rules.push(HymofsRuleEntry {
+                rules.push(KasumiRuleEntry {
                     rule_type,
                     target,
                     source,
@@ -135,7 +137,7 @@ pub fn parse_hymofs_rule_listing(listing: &str) -> Vec<HymofsRuleEntry> {
                 });
             }
             "HIDE" | "INJECT" => {
-                rules.push(HymofsRuleEntry {
+                rules.push(KasumiRuleEntry {
                     rule_type,
                     target: None,
                     source: None,
@@ -146,7 +148,7 @@ pub fn parse_hymofs_rule_listing(listing: &str) -> Vec<HymofsRuleEntry> {
             }
             _ => {
                 let args = parts.collect::<Vec<_>>().join(" ");
-                rules.push(HymofsRuleEntry {
+                rules.push(KasumiRuleEntry {
                     rule_type,
                     target: None,
                     source: None,
@@ -162,85 +164,85 @@ pub fn parse_hymofs_rule_listing(listing: &str) -> Vec<HymofsRuleEntry> {
 }
 
 pub fn build_features_payload() -> FeatureInfo {
-    let bits = hymofs::get_features().unwrap_or_default();
+    let bits = kasumi::get_features().unwrap_or_default();
     FeatureInfo {
         bitmask: bits,
-        names: hymofs::feature_names(bits),
+        names: kasumi::feature_names(bits),
     }
 }
 
 pub fn build_lkm_payload(config: &Config) -> LkmPayload {
-    let status = lkm::status(&config.hymofs);
+    let status = lkm::status(&config.kasumi);
     LkmPayload::from(status)
 }
 
-pub fn build_hymofs_version_payload(config: &Config, state: &RuntimeState) -> HymofsVersionPayload {
-    if !config.hymofs.enabled {
-        return HymofsVersionPayload {
-            protocol_version: hymofs::HYMO_PROTOCOL_VERSION,
+pub fn build_kasumi_version_payload(config: &Config, state: &RuntimeState) -> KasumiVersionPayload {
+    if !config.kasumi.enabled {
+        return KasumiVersionPayload {
+            protocol_version: kasumi::HYMO_PROTOCOL_VERSION,
             kernel_version: 0,
-            hymofs_available: false,
+            kasumi_available: false,
             protocol_mismatch: false,
             mismatch_message: None,
             active_modules: Vec::new(),
             mount_base: state.mount_point.clone(),
-            mirror_path: config.hymofs.mirror_path.clone(),
+            mirror_path: config.kasumi.mirror_path.clone(),
         };
     }
 
-    let status = hymofs::check_status();
-    let kernel_version = hymofs::get_protocol_version().ok();
-    let active_rules = hymofs::get_active_rules().unwrap_or_default();
-    let parsed_rules = parse_hymofs_rule_listing(&active_rules);
-    let active_modules = if !state.hymofs_modules.is_empty() {
-        let mut modules = state.hymofs_modules.clone();
+    let status = kasumi::check_status();
+    let kernel_version = kasumi::get_protocol_version().ok();
+    let active_rules = kasumi::get_active_rules().unwrap_or_default();
+    let parsed_rules = parse_kasumi_rule_listing(&active_rules);
+    let active_modules = if !state.kasumi_modules.is_empty() {
+        let mut modules = state.kasumi_modules.clone();
         modules.sort();
         modules.dedup();
         modules
     } else {
-        extract_active_module_ids(&parsed_rules, &config.hymofs.mirror_path)
+        extract_active_module_ids(&parsed_rules, &config.kasumi.mirror_path)
     };
 
-    let mismatch = kernel_version.is_some_and(|version| version != hymofs::HYMO_PROTOCOL_VERSION);
+    let mismatch = kernel_version.is_some_and(|version| version != kasumi::HYMO_PROTOCOL_VERSION);
 
-    HymofsVersionPayload {
-        protocol_version: hymofs::HYMO_PROTOCOL_VERSION,
+    KasumiVersionPayload {
+        protocol_version: kasumi::HYMO_PROTOCOL_VERSION,
         kernel_version: kernel_version.unwrap_or_default(),
-        hymofs_available: status == HymoFsStatus::Available,
+        kasumi_available: status == KasumiStatus::Available,
         protocol_mismatch: mismatch,
         mismatch_message: mismatch_message(status, kernel_version),
         active_modules,
         mount_base: state.mount_point.clone(),
-        mirror_path: config.hymofs.mirror_path.clone(),
+        mirror_path: config.kasumi.mirror_path.clone(),
     }
 }
 
-fn mismatch_message(status: HymoFsStatus, kernel_version: Option<i32>) -> Option<String> {
+fn mismatch_message(status: KasumiStatus, kernel_version: Option<i32>) -> Option<String> {
     match status {
-        HymoFsStatus::KernelTooOld => Some(format!(
+        KasumiStatus::KernelTooOld => Some(format!(
             "kernel protocol {} is older than userspace api{}",
             kernel_version.unwrap_or_default(),
-            hymofs::HYMO_PROTOCOL_VERSION
+            kasumi::HYMO_PROTOCOL_VERSION
         )),
-        HymoFsStatus::ModuleTooOld => Some(format!(
+        KasumiStatus::ModuleTooOld => Some(format!(
             "kernel protocol {} is newer than userspace api{}",
             kernel_version.unwrap_or_default(),
-            hymofs::HYMO_PROTOCOL_VERSION
+            kasumi::HYMO_PROTOCOL_VERSION
         )),
-        HymoFsStatus::Available => kernel_version
-            .filter(|version| *version != hymofs::HYMO_PROTOCOL_VERSION)
+        KasumiStatus::Available => kernel_version
+            .filter(|version| *version != kasumi::HYMO_PROTOCOL_VERSION)
             .map(|version| {
                 format!(
                     "protocol mismatch: userspace api{}, kernel api{}",
-                    hymofs::HYMO_PROTOCOL_VERSION,
+                    kasumi::HYMO_PROTOCOL_VERSION,
                     version
                 )
             }),
-        HymoFsStatus::NotPresent => None,
+        KasumiStatus::NotPresent => None,
     }
 }
 
-fn extract_active_module_ids(rules: &[HymofsRuleEntry], mirror_path: &Path) -> Vec<String> {
+fn extract_active_module_ids(rules: &[KasumiRuleEntry], mirror_path: &Path) -> Vec<String> {
     let mut modules = BTreeSet::new();
 
     for rule in rules {

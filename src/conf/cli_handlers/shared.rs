@@ -23,7 +23,7 @@ use serde::de::DeserializeOwned;
 
 use crate::{
     conf::{cli::Cli, config::Config, store::ConfigSession},
-    mount::hymofs as hymofs_mount,
+    mount::kasumi as kasumi_mount,
 };
 
 pub(super) fn decode_hex_json<T: DeserializeOwned>(payload: &str, type_name: &str) -> Result<T> {
@@ -60,13 +60,13 @@ where
     Ok((path, effective))
 }
 
-pub(super) fn require_live_hymofs(config: &Config, description: &str) -> Result<()> {
-    hymofs_mount::require_live(config, description)
+pub(super) fn require_live_kasumi(config: &Config, description: &str) -> Result<()> {
+    kasumi_mount::require_live(config, description)
 }
 
 pub(super) fn print_config_save_result(path: &Path, what: &str) {
     println!(
-        "{what} saved to {}. Running HymoFS state was not changed; apply the runtime separately for the new config to take effect.",
+        "{what} saved to {}. Running Kasumi state was not changed; apply the runtime separately for the new config to take effect.",
         path.display()
     );
 }
@@ -82,7 +82,7 @@ pub(super) fn detect_rule_file_type(path: &Path) -> Result<i32> {
 
     if file_type.is_char_device() && metadata.rdev() == 0 {
         bail!(
-            "source {} is a whiteout node; use `hymofs rule hide` instead",
+            "source {} is a whiteout node; use `kasumi rule hide` instead",
             path.display()
         );
     }

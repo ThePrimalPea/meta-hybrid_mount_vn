@@ -29,7 +29,7 @@ use crate::{
     conf::{config, schema},
     core::{inventory::Module, ops::plan::MountPlan, user_hide_rules},
     defs,
-    sys::hymofs::{
+    sys::kasumi::{
         self, HYMO_FEATURE_CMDLINE_SPOOF, HYMO_FEATURE_KSTAT_SPOOF, HYMO_FEATURE_MAPS_SPOOF,
         HYMO_FEATURE_MOUNT_HIDE, HYMO_FEATURE_STATFS_SPOOF, HYMO_FEATURE_UNAME_SPOOF, HymoMapsRule,
         HymoMountHideArg, HymoSpoofKstat, HymoSpoofUname, HymoStatfsSpoofArg,
@@ -37,24 +37,24 @@ use crate::{
 };
 
 fn mount_mapping_requested(plan: &MountPlan) -> bool {
-    !plan.hymofs_module_ids.is_empty()
+    !plan.kasumi_module_ids.is_empty()
 }
 
 fn auxiliary_features_requested(config: &config::Config) -> bool {
-    config.hymofs.enable_kernel_debug
+    config.kasumi.enable_kernel_debug
         || effective_stealth_enabled(config)
         || effective_mount_hide_enabled(config)
         || effective_maps_spoof_enabled(config)
         || effective_statfs_spoof_enabled(config)
         || has_uname_spoof_config(config)
-        || !config.hymofs.cmdline_value.is_empty()
-        || !config.hymofs.hide_uids.is_empty()
-        || !config.hymofs.kstat_rules.is_empty()
+        || !config.kasumi.cmdline_value.is_empty()
+        || !config.kasumi.hide_uids.is_empty()
+        || !config.kasumi.kstat_rules.is_empty()
         || user_hide_rules::user_hide_rule_count() > 0
 }
 
-fn hymofs_runtime_requested(plan: &MountPlan, config: &config::Config) -> bool {
-    config.hymofs.enabled && (mount_mapping_requested(plan) || auxiliary_features_requested(config))
+fn kasumi_runtime_requested(plan: &MountPlan, config: &config::Config) -> bool {
+    config.kasumi.enabled && (mount_mapping_requested(plan) || auxiliary_features_requested(config))
 }
 
 fn apply_feature_toggle<F>(
@@ -71,7 +71,7 @@ fn apply_feature_toggle<F>(
     if !supported {
         crate::scoped_log!(
             warn,
-            "mount:hymofs",
+            "mount:kasumi",
             "feature skip: name={}, enabled={}, reason=unsupported",
             feature_name,
             enabled
@@ -82,7 +82,7 @@ fn apply_feature_toggle<F>(
     if let Err(err) = operation(enabled) {
         crate::scoped_log!(
             warn,
-            "mount:hymofs",
+            "mount:kasumi",
             "feature apply failed: name={}, enabled={}, error={:#}",
             feature_name,
             enabled,
@@ -92,12 +92,12 @@ fn apply_feature_toggle<F>(
 }
 
 fn get_features() -> Option<i32> {
-    match hymofs::get_features() {
+    match kasumi::get_features() {
         Ok(bits) => Some(bits),
         Err(err) => {
             crate::scoped_log!(
                 debug,
-                "mount:hymofs",
+                "mount:kasumi",
                 "feature query failed: error={:#}",
                 err
             );
@@ -108,10 +108,10 @@ fn get_features() -> Option<i32> {
 
 fn log_feature_summary(features: Option<i32>) {
     if let Some(bits) = features {
-        let names = hymofs::feature_names(bits);
+        let names = kasumi::feature_names(bits);
         crate::scoped_log!(
             info,
-            "mount:hymofs",
+            "mount:kasumi",
             "features: bits={}, names={}",
             bits,
             if names.is_empty() {
@@ -132,12 +132,12 @@ fn apply_runtime_switches(
         return Ok(());
     }
 
-    if config.hymofs.enable_kernel_debug {
-        hymofs::set_debug(true)?;
+    if config.kasumi.enable_kernel_debug {
+        kasumi::set_debug(true)?;
     }
 
     if effective_stealth_enabled(config) {
-        hymofs::set_stealth(true)?;
+        kasumi::set_stealth(true)?;
     }
 
     let mount_hide_enabled = effective_mount_hide_enabled(config);
@@ -146,7 +146,7 @@ fn apply_runtime_switches(
             if let Err(err) = apply_mount_hide_from_config(config) {
                 crate::scoped_log!(
                     warn,
-                    "mount:hymofs",
+                    "mount:kasumi",
                     "feature apply failed: name=mount_hide, enabled=true, error={:#}",
                     err
                 );
@@ -154,7 +154,7 @@ fn apply_runtime_switches(
         } else {
             crate::scoped_log!(
                 warn,
-                "mount:hymofs",
+                "mount:kasumi",
                 "feature skip: name=mount_hide, enabled=true, reason=unsupported"
             );
         }
@@ -167,7 +167,7 @@ fn apply_runtime_switches(
             true,
             features,
             HYMO_FEATURE_MAPS_SPOOF,
-            hymofs::set_maps_spoof,
+            kasumi::set_maps_spoof,
         );
     }
 
@@ -177,7 +177,7 @@ fn apply_runtime_switches(
             if let Err(err) = apply_statfs_spoof_from_config(config) {
                 crate::scoped_log!(
                     warn,
-                    "mount:hymofs",
+                    "mount:kasumi",
                     "feature apply failed: name=statfs_spoof, enabled=true, error={:#}",
                     err
                 );
@@ -185,7 +185,7 @@ fn apply_runtime_switches(
         } else {
             crate::scoped_log!(
                 warn,
-                "mount:hymofs",
+                "mount:kasumi",
                 "feature skip: name=statfs_spoof, enabled=true, reason=unsupported"
             );
         }
@@ -197,12 +197,12 @@ fn apply_runtime_switches(
 pub fn apply_mount_hide_from_config(config: &config::Config) -> Result<()> {
     let enabled = effective_mount_hide_enabled(config);
 
-    if enabled && !config.hymofs.mount_hide.path_pattern.as_os_str().is_empty() {
+    if enabled && !config.kasumi.mount_hide.path_pattern.as_os_str().is_empty() {
         let arg =
-            HymoMountHideArg::new(true, Some(config.hymofs.mount_hide.path_pattern.as_path()))?;
-        hymofs::set_mount_hide_config(&arg)
+            HymoMountHideArg::new(true, Some(config.kasumi.mount_hide.path_pattern.as_path()))?;
+        kasumi::set_mount_hide_config(&arg)
     } else {
-        hymofs::set_mount_hide(enabled)
+        kasumi::set_mount_hide(enabled)
     }
 }
 
@@ -210,47 +210,47 @@ pub fn apply_statfs_spoof_from_config(config: &config::Config) -> Result<()> {
     let enabled = effective_statfs_spoof_enabled(config);
 
     if enabled
-        && (!config.hymofs.statfs_spoof.path.as_os_str().is_empty()
-            || config.hymofs.statfs_spoof.spoof_f_type != 0)
+        && (!config.kasumi.statfs_spoof.path.as_os_str().is_empty()
+            || config.kasumi.statfs_spoof.spoof_f_type != 0)
     {
         let arg = HymoStatfsSpoofArg::with_path_and_f_type(
             true,
-            config.hymofs.statfs_spoof.path.as_path(),
+            config.kasumi.statfs_spoof.path.as_path(),
             to_c_ulong(
-                config.hymofs.statfs_spoof.spoof_f_type,
+                config.kasumi.statfs_spoof.spoof_f_type,
                 "statfs_spoof.spoof_f_type",
             )?,
         )?;
-        hymofs::set_statfs_spoof_config(&arg)
+        kasumi::set_statfs_spoof_config(&arg)
     } else {
-        hymofs::set_statfs_spoof(enabled)
+        kasumi::set_statfs_spoof(enabled)
     }
 }
 
 pub fn apply_uname_from_config(config: &config::Config) -> Result<()> {
     let mut uname = HymoSpoofUname::default();
-    if !config.hymofs.uname.sysname.is_empty() {
-        uname.set_sysname(&config.hymofs.uname.sysname)?;
+    if !config.kasumi.uname.sysname.is_empty() {
+        uname.set_sysname(&config.kasumi.uname.sysname)?;
     }
-    if !config.hymofs.uname.nodename.is_empty() {
-        uname.set_nodename(&config.hymofs.uname.nodename)?;
+    if !config.kasumi.uname.nodename.is_empty() {
+        uname.set_nodename(&config.kasumi.uname.nodename)?;
     }
-    if !config.hymofs.uname.release.is_empty() {
-        uname.set_release(&config.hymofs.uname.release)?;
+    if !config.kasumi.uname.release.is_empty() {
+        uname.set_release(&config.kasumi.uname.release)?;
     }
-    if !config.hymofs.uname.version.is_empty() {
-        uname.set_version(&config.hymofs.uname.version)?;
+    if !config.kasumi.uname.version.is_empty() {
+        uname.set_version(&config.kasumi.uname.version)?;
     }
-    if !config.hymofs.uname.machine.is_empty() {
-        uname.set_machine(&config.hymofs.uname.machine)?;
+    if !config.kasumi.uname.machine.is_empty() {
+        uname.set_machine(&config.kasumi.uname.machine)?;
     }
-    if !config.hymofs.uname.domainname.is_empty() {
-        uname.set_domainname(&config.hymofs.uname.domainname)?;
+    if !config.kasumi.uname.domainname.is_empty() {
+        uname.set_domainname(&config.kasumi.uname.domainname)?;
     }
-    hymofs::set_uname(&uname)
+    kasumi::set_uname(&uname)
 }
 
-pub fn apply_kstat_rule(rule: &schema::HymoKstatRuleConfig) -> Result<()> {
+pub fn apply_kstat_rule(rule: &schema::KasumiKstatRuleConfig) -> Result<()> {
     let mut native_rule = HymoSpoofKstat::new(
         to_c_ulong(rule.target_ino, "target_ino")?,
         &rule.target_pathname,
@@ -269,17 +269,17 @@ pub fn apply_kstat_rule(rule: &schema::HymoKstatRuleConfig) -> Result<()> {
     native_rule.spoofed_blocks = rule.spoofed_blocks;
     native_rule.is_static = if rule.is_static { 1 } else { 0 };
 
-    match hymofs::update_spoof_kstat(&native_rule) {
+    match kasumi::update_spoof_kstat(&native_rule) {
         Ok(()) => Ok(()),
         Err(update_err) => {
             crate::scoped_log!(
                 debug,
-                "mount:hymofs",
+                "mount:kasumi",
                 "kstat update fallback to add: target={}, error={:#}",
                 rule.target_pathname.display(),
                 update_err
             );
-            hymofs::add_spoof_kstat(&native_rule).with_context(|| {
+            kasumi::add_spoof_kstat(&native_rule).with_context(|| {
                 format!(
                     "failed to apply kstat rule for {}",
                     rule.target_pathname.display()
@@ -296,60 +296,60 @@ fn apply_spoof_settings(config: &config::Config, features: Option<i32>) -> Resul
     } else if has_uname_config {
         crate::scoped_log!(
             warn,
-            "mount:hymofs",
+            "mount:kasumi",
             "feature skip: name=uname_spoof, reason=unsupported"
         );
     }
 
     if feature_supported(features, HYMO_FEATURE_CMDLINE_SPOOF)
-        && !config.hymofs.cmdline_value.is_empty()
+        && !config.kasumi.cmdline_value.is_empty()
     {
-        hymofs::set_cmdline_str(&config.hymofs.cmdline_value)?;
-    } else if !config.hymofs.cmdline_value.is_empty() {
+        kasumi::set_cmdline_str(&config.kasumi.cmdline_value)?;
+    } else if !config.kasumi.cmdline_value.is_empty() {
         crate::scoped_log!(
             warn,
-            "mount:hymofs",
+            "mount:kasumi",
             "feature skip: name=cmdline_spoof, reason=unsupported"
         );
     }
 
-    if !config.hymofs.hide_uids.is_empty()
-        && let Err(err) = hymofs::set_hide_uids(&config.hymofs.hide_uids)
+    if !config.kasumi.hide_uids.is_empty()
+        && let Err(err) = kasumi::set_hide_uids(&config.kasumi.hide_uids)
     {
         crate::scoped_log!(
             warn,
-            "mount:hymofs",
+            "mount:kasumi",
             "hide_uids apply failed: count={}, error={:#}",
-            config.hymofs.hide_uids.len(),
+            config.kasumi.hide_uids.len(),
             err
         );
     }
 
-    if !config.hymofs.kstat_rules.is_empty() {
+    if !config.kasumi.kstat_rules.is_empty() {
         if !feature_supported(features, HYMO_FEATURE_KSTAT_SPOOF) {
             crate::scoped_log!(
                 warn,
-                "mount:hymofs",
+                "mount:kasumi",
                 "feature skip: name=kstat_rules, count={}, reason=unsupported",
-                config.hymofs.kstat_rules.len()
+                config.kasumi.kstat_rules.len()
             );
         } else {
-            for rule in &config.hymofs.kstat_rules {
+            for rule in &config.kasumi.kstat_rules {
                 apply_kstat_rule(rule)?;
             }
         }
     }
 
-    if !config.hymofs.maps_rules.is_empty() {
+    if !config.kasumi.maps_rules.is_empty() {
         if !feature_supported(features, HYMO_FEATURE_MAPS_SPOOF) {
             crate::scoped_log!(
                 warn,
-                "mount:hymofs",
+                "mount:kasumi",
                 "feature skip: name=maps_rules, count={}, reason=unsupported",
-                config.hymofs.maps_rules.len()
+                config.kasumi.maps_rules.len()
             );
         } else {
-            for rule in &config.hymofs.maps_rules {
+            for rule in &config.kasumi.maps_rules {
                 let native_rule = HymoMapsRule::new(
                     to_c_ulong(rule.target_ino, "target_ino")?,
                     to_c_ulong(rule.target_dev, "target_dev")?,
@@ -357,7 +357,7 @@ fn apply_spoof_settings(config: &config::Config, features: Option<i32>) -> Resul
                     to_c_ulong(rule.spoofed_dev, "spoofed_dev")?,
                     &rule.spoofed_pathname,
                 )?;
-                hymofs::add_maps_rule(&native_rule)?;
+                kasumi::add_maps_rule(&native_rule)?;
             }
         }
     }
@@ -366,7 +366,7 @@ fn apply_spoof_settings(config: &config::Config, features: Option<i32>) -> Resul
 }
 
 pub fn reset_runtime(config: &config::Config) -> Result<bool> {
-    if !config.hymofs.enabled {
+    if !config.kasumi.enabled {
         return Ok(false);
     }
 
@@ -377,18 +377,18 @@ pub fn reset_runtime(config: &config::Config) -> Result<bool> {
 
     crate::scoped_log!(
         info,
-        "mount:hymofs",
+        "mount:kasumi",
         "reset: mirror_path={}",
-        config.hymofs.mirror_path.display()
+        config.kasumi.mirror_path.display()
     );
 
-    hymofs::set_mirror_path(&config.hymofs.mirror_path)?;
-    hymofs::set_enabled(false)?;
-    hymofs::clear_rules()?;
-    if let Err(err) = hymofs::clear_maps_rules() {
+    kasumi::set_mirror_path(&config.kasumi.mirror_path)?;
+    kasumi::set_enabled(false)?;
+    kasumi::clear_rules()?;
+    if let Err(err) = kasumi::clear_maps_rules() {
         crate::scoped_log!(
             debug,
-            "mount:hymofs",
+            "mount:kasumi",
             "maps rule clear skipped: error={:#}",
             err
         );
@@ -397,12 +397,12 @@ pub fn reset_runtime(config: &config::Config) -> Result<bool> {
     let features = get_features();
     log_feature_summary(features);
 
-    if config.hymofs.mirror_path != Path::new(defs::HYMOFS_MIRROR_DIR) {
+    if config.kasumi.mirror_path != Path::new(defs::KASUMI_MIRROR_DIR) {
         crate::scoped_log!(
             info,
-            "mount:hymofs",
+            "mount:kasumi",
             "custom mirror active: path={}",
-            config.hymofs.mirror_path.display()
+            config.kasumi.mirror_path.display()
         );
     }
 
@@ -410,25 +410,25 @@ pub fn reset_runtime(config: &config::Config) -> Result<bool> {
 }
 
 pub fn apply(plan: &mut MountPlan, modules: &[Module], config: &config::Config) -> Result<bool> {
-    if !config.hymofs.enabled {
+    if !config.kasumi.enabled {
         return Ok(false);
     }
 
-    let runtime_requested = hymofs_runtime_requested(plan, config);
+    let runtime_requested = kasumi_runtime_requested(plan, config);
     let available = can_operate(config);
     if !available {
         if mount_mapping_requested(plan) {
-            bail!("HymoFS became unavailable before rule application");
+            bail!("Kasumi became unavailable before rule application");
         }
         return Ok(false);
     }
 
     crate::scoped_log!(
         info,
-        "mount:hymofs",
-        "apply: mirror_path={}, hymofs_modules={}, runtime_requested={}",
-        config.hymofs.mirror_path.display(),
-        plan.hymofs_module_ids.len(),
+        "mount:kasumi",
+        "apply: mirror_path={}, kasumi_modules={}, runtime_requested={}",
+        config.kasumi.mirror_path.display(),
+        plan.kasumi_module_ids.len(),
         runtime_requested
     );
 
@@ -440,16 +440,16 @@ pub fn apply(plan: &mut MountPlan, modules: &[Module], config: &config::Config) 
     let user_hide_paths = user_hide_rules::load_user_hide_rules()?;
     log_compiled_rule_summary(&compiled, &user_hide_paths);
 
-    plan.hymofs_add_rules = compiled.add_rules;
-    plan.hymofs_merge_rules = compiled.merge_rules;
-    plan.hymofs_hide_rules = compiled.hide_rules;
+    plan.kasumi_add_rules = compiled.add_rules;
+    plan.kasumi_merge_rules = compiled.merge_rules;
+    plan.kasumi_hide_rules = compiled.hide_rules;
 
-    hymofs::set_mirror_path(&config.hymofs.mirror_path)?;
-    hymofs::clear_rules()?;
-    if let Err(err) = hymofs::clear_maps_rules() {
+    kasumi::set_mirror_path(&config.kasumi.mirror_path)?;
+    kasumi::clear_rules()?;
+    if let Err(err) = kasumi::clear_maps_rules() {
         crate::scoped_log!(
             debug,
-            "mount:hymofs",
+            "mount:kasumi",
             "maps rule clear skipped: error={:#}",
             err
         );
@@ -458,10 +458,10 @@ pub fn apply(plan: &mut MountPlan, modules: &[Module], config: &config::Config) 
     let features = get_features();
     log_feature_summary(features);
     if !runtime_requested {
-        hymofs::set_enabled(false)?;
+        kasumi::set_enabled(false)?;
         crate::scoped_log!(
             info,
-            "mount:hymofs",
+            "mount:kasumi",
             "apply skipped: reason=no_runtime_request"
         );
         return Ok(false);
@@ -470,40 +470,40 @@ pub fn apply(plan: &mut MountPlan, modules: &[Module], config: &config::Config) 
     apply_runtime_switches(config, true, features)?;
     apply_spoof_settings(config, features)?;
 
-    for rule in &plan.hymofs_add_rules {
-        hymofs::add_rule(Path::new(&rule.target), &rule.source, rule.file_type)?;
+    for rule in &plan.kasumi_add_rules {
+        kasumi::add_rule(Path::new(&rule.target), &rule.source, rule.file_type)?;
     }
-    for rule in &plan.hymofs_merge_rules {
-        hymofs::add_merge_rule(Path::new(&rule.target), &rule.source)?;
+    for rule in &plan.kasumi_merge_rules {
+        kasumi::add_merge_rule(Path::new(&rule.target), &rule.source)?;
     }
-    for path in &plan.hymofs_hide_rules {
-        hymofs::hide_path(Path::new(path))?;
+    for path in &plan.kasumi_hide_rules {
+        kasumi::hide_path(Path::new(path))?;
     }
 
     let (user_hide_applied, user_hide_failed) =
         user_hide_rules::apply_user_hide_rules_from_paths(&user_hide_paths)?;
 
-    hymofs::set_enabled(runtime_requested)?;
-    if runtime_requested && let Err(err) = hymofs::fix_mounts() {
-        crate::scoped_log!(debug, "mount:hymofs", "fix_mounts skipped: error={:#}", err);
+    kasumi::set_enabled(runtime_requested)?;
+    if runtime_requested && let Err(err) = kasumi::fix_mounts() {
+        crate::scoped_log!(debug, "mount:kasumi", "fix_mounts skipped: error={:#}", err);
     }
 
     crate::scoped_log!(
         info,
-        "mount:hymofs",
+        "mount:kasumi",
         "apply complete: enabled={}, add_rules={}, merge_rules={}, hide_rules={}, maps_rules={}, kstat_rules={}",
         runtime_requested,
-        plan.hymofs_add_rules.len(),
-        plan.hymofs_merge_rules.len(),
-        plan.hymofs_hide_rules.len(),
-        config.hymofs.maps_rules.len(),
-        config.hymofs.kstat_rules.len()
+        plan.kasumi_add_rules.len(),
+        plan.kasumi_merge_rules.len(),
+        plan.kasumi_hide_rules.len(),
+        config.kasumi.maps_rules.len(),
+        config.kasumi.kstat_rules.len()
     );
 
     if user_hide_applied > 0 || user_hide_failed > 0 {
         crate::scoped_log!(
             info,
-            "mount:hymofs",
+            "mount:kasumi",
             "user hide rules: applied={}, failed={}",
             user_hide_applied,
             user_hide_failed
@@ -512,9 +512,9 @@ pub fn apply(plan: &mut MountPlan, modules: &[Module], config: &config::Config) 
 
     if runtime_requested {
         match hook_lines() {
-            Ok(hooks) => crate::scoped_log!(debug, "mount:hymofs", "hooks: {}", hooks.join(",")),
+            Ok(hooks) => crate::scoped_log!(debug, "mount:kasumi", "hooks: {}", hooks.join(",")),
             Err(err) => {
-                crate::scoped_log!(debug, "mount:hymofs", "hook query skipped: error={:#}", err)
+                crate::scoped_log!(debug, "mount:kasumi", "hook query skipped: error={:#}", err)
             }
         }
     }

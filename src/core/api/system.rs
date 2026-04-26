@@ -25,7 +25,7 @@ use crate::{
     conf::config::Config,
     core::runtime_state::RuntimeState,
     partitions,
-    sys::hymofs::{self, HymoFsStatus},
+    sys::kasumi::{self, KasumiStatus},
 };
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -95,8 +95,8 @@ pub struct SystemPayload {
     pub mount_error_modules: Vec<String>,
     pub mount_error_reasons: BTreeMap<String, String>,
     pub skip_mount_modules: Vec<String>,
-    pub hymofs_available: bool,
-    pub hymofs_status: i32,
+    pub kasumi_available: bool,
+    pub kasumi_status: i32,
     pub lkm: LkmPayload,
     #[serde(rename = "mountStats")]
     pub mount_stats: MountStatsPayload,
@@ -180,12 +180,12 @@ pub fn build_partitions_payload(config: &Config) -> Vec<PartitionInfo> {
 }
 
 pub fn build_system_payload(config: &Config, state: &RuntimeState) -> SystemPayload {
-    let status = if config.hymofs.enabled {
-        hymofs::check_status()
+    let status = if config.kasumi.enabled {
+        kasumi::check_status()
     } else {
-        HymoFsStatus::NotPresent
+        KasumiStatus::NotPresent
     };
-    let features = if config.hymofs.enabled {
+    let features = if config.kasumi.enabled {
         build_features_payload()
     } else {
         FeatureInfo {
@@ -193,8 +193,8 @@ pub fn build_system_payload(config: &Config, state: &RuntimeState) -> SystemPayl
             names: Vec::new(),
         }
     };
-    let hooks = if config.hymofs.enabled {
-        hymofs::get_hooks().unwrap_or_default()
+    let hooks = if config.kasumi.enabled {
+        kasumi::get_hooks().unwrap_or_default()
     } else {
         String::new()
     };
@@ -207,8 +207,8 @@ pub fn build_system_payload(config: &Config, state: &RuntimeState) -> SystemPayl
         mount_error_modules: state.mount_error_modules.clone(),
         mount_error_reasons: state.mount_error_reasons.clone(),
         skip_mount_modules: state.skip_mount_modules.clone(),
-        hymofs_available: status == HymoFsStatus::Available,
-        hymofs_status: status_code(status),
+        kasumi_available: status == KasumiStatus::Available,
+        kasumi_status: status_code(status),
         lkm: build_lkm_payload(config),
         mount_stats: build_mount_stats_payload(state),
         detected_partitions: build_partitions_payload(config),
@@ -219,12 +219,12 @@ pub fn build_system_payload(config: &Config, state: &RuntimeState) -> SystemPayl
     }
 }
 
-fn status_code(status: HymoFsStatus) -> i32 {
+fn status_code(status: KasumiStatus) -> i32 {
     match status {
-        HymoFsStatus::Available => 0,
-        HymoFsStatus::NotPresent => 1,
-        HymoFsStatus::KernelTooOld => 2,
-        HymoFsStatus::ModuleTooOld => 3,
+        KasumiStatus::Available => 0,
+        KasumiStatus::NotPresent => 1,
+        KasumiStatus::KernelTooOld => 2,
+        KasumiStatus::ModuleTooOld => 3,
     }
 }
 

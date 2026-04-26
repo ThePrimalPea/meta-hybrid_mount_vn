@@ -28,7 +28,7 @@ use crate::{
     conf::config::Config,
     core::{
         backend_capabilities::BackendCapabilities,
-        hymofs_coordinator::HymofsCoordinator,
+        kasumi_coordinator::KasumiCoordinator,
         inventory::{self},
         ops::{
             executor::{self},
@@ -142,15 +142,15 @@ impl MountController<StorageReady> {
 
         crate::scoped_log!(info, "controller:scan_and_sync", "commit complete");
 
-        let hymofs = HymofsCoordinator::new(&self.config);
-        hymofs
+        let kasumi = KasumiCoordinator::new(&self.config);
+        kasumi
             .prepare_mirror_storage(&self.backend_capabilities, &modules)
             .map_err(|err| {
-                let module_ids = HymofsCoordinator::requested_module_ids(&modules);
+                let module_ids = KasumiCoordinator::requested_module_ids(&modules);
                 ModuleStageFailure::new(
                     FailureStage::Sync,
                     module_ids,
-                    anyhow::anyhow!("Failed to prepare HymoFS mirror storage: {:#}", err),
+                    anyhow::anyhow!("Failed to prepare Kasumi mirror storage: {:#}", err),
                 )
             })?;
 
@@ -179,11 +179,11 @@ impl MountController<ModulesReady> {
         crate::scoped_log!(
             info,
             "controller:generate_plan",
-            "complete: overlay_ops={}, overlay_modules={}, magic_modules={}, hymofs_modules={}, hymofs_rule_compile=deferred",
+            "complete: overlay_ops={}, overlay_modules={}, magic_modules={}, kasumi_modules={}, kasumi_rule_compile=deferred",
             plan.overlay_ops.len(),
             plan.overlay_module_ids.len(),
             plan.magic_module_ids.len(),
-            plan.hymofs_module_ids.len()
+            plan.kasumi_module_ids.len()
         );
 
         Ok(MountController {
@@ -212,10 +212,10 @@ impl MountController<Planned> {
         crate::scoped_log!(
             info,
             "controller:execute",
-            "complete: overlay_mounted={}, magic_mounted={}, hymofs_mounted={}",
+            "complete: overlay_mounted={}, magic_mounted={}, kasumi_mounted={}",
             result.overlay_module_ids.len(),
             result.magic_module_ids.len(),
-            result.hymofs_module_ids.len()
+            result.kasumi_module_ids.len()
         );
 
         Ok(MountController {
@@ -242,7 +242,7 @@ impl MountController<Executed> {
 
         clean_up(
             &self.tempdir,
-            &self.config.hymofs.mirror_path,
+            &self.config.kasumi.mirror_path,
             self.state.handle.mode(),
             self.config.disable_umount,
         )?;
@@ -255,7 +255,7 @@ impl MountController<Executed> {
 
 fn clean_up(
     tempdir: &Path,
-    hymofs_mirror_path: &Path,
+    kasumi_mirror_path: &Path,
     storage_mode: crate::core::storage::StorageMode,
     disable_umount: bool,
 ) -> Result<()> {
@@ -279,26 +279,26 @@ fn clean_up(
         return Ok(());
     }
 
-    clean_up_path(tempdir, hymofs_mirror_path, storage_mode)
+    clean_up_path(tempdir, kasumi_mirror_path, storage_mode)
 }
 
 fn clean_up_path(
     tempdir: &Path,
-    hymofs_mirror_path: &Path,
+    kasumi_mirror_path: &Path,
     storage_mode: crate::core::storage::StorageMode,
 ) -> Result<()> {
-    if tempdir == hymofs_mirror_path {
+    if tempdir == kasumi_mirror_path {
         crate::scoped_log!(
             info,
             "controller:finalize",
-            "cleanup skipped: path={}, reason=hymofs_mirror",
+            "cleanup skipped: path={}, reason=kasumi_mirror",
             tempdir.display()
         );
         return Ok(());
     }
 
-    if hymofs_mirror_path.starts_with(tempdir) {
-        let Some(preserved_child) = hymofs_mirror_path
+    if kasumi_mirror_path.starts_with(tempdir) {
+        let Some(preserved_child) = kasumi_mirror_path
             .strip_prefix(tempdir)
             .ok()
             .and_then(|relative| relative.components().next())
@@ -312,7 +312,7 @@ fn clean_up_path(
             "controller:finalize",
             "cleanup partial: path={}, preserve={}",
             tempdir.display(),
-            hymofs_mirror_path.display()
+            kasumi_mirror_path.display()
         );
 
         let entries = match fs::read_dir(tempdir) {

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: Build LKM for HymoFS
+name: Build LKM for Kasumi
 
 on:
   workflow_call:
@@ -22,8 +22,8 @@ on:
         required: false
         default: false
         type: boolean
-      hymofs_ref:
-        description: "HymoFS git ref (branch/tag/commit)"
+      kasumi_ref:
+        description: "Kasumi git ref (branch/tag/commit)"
         required: false
         default: "main"
         type: string
@@ -39,8 +39,8 @@ on:
         required: false
         default: false
         type: boolean
-      hymofs_ref:
-        description: "HymoFS git ref (branch/tag/commit)"
+      kasumi_ref:
+        description: "Kasumi git ref (branch/tag/commit)"
         required: false
         default: "main"
         type: string
@@ -51,7 +51,7 @@ on:
         type: string
 
 jobs:
-  build-hymofs-lkm:
+  build-kasumi-lkm:
     strategy:
       fail-fast: false
       matrix:
@@ -65,10 +65,10 @@ jobs:
           - android16-6.12
         arch:
           - arm64
-    uses: ./.github/workflows/hymofs-lkm.yml
+    uses: ./.github/workflows/kasumi-lkm.yml
     secrets: inherit
     with:
       kmi: ${{ matrix.kmi }}
       arch: ${{ matrix.arch }}
-      hymofs_ref: ${{ inputs.hymofs_ref }}
+      kasumi_ref: ${{ inputs.kasumi_ref }}
       ddk_release: ${{ inputs.ddk_release }}

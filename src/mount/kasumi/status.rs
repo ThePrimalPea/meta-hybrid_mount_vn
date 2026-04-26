@@ -16,16 +16,16 @@ use anyhow::{Result, bail};
 
 use crate::{
     conf::config,
-    core::{api, runtime_state::HymoFsRuntimeInfo, user_hide_rules},
+    core::{api, runtime_state::KasumiRuntimeInfo, user_hide_rules},
     sys::{
-        hymofs::{self, HymoFsStatus},
+        kasumi::{self, KasumiStatus},
         lkm,
     },
 };
 
 pub fn can_operate(config: &config::Config) -> bool {
     let _ = config;
-    hymofs::can_operate()
+    kasumi::can_operate()
 }
 
 pub fn require_live(config: &config::Config, description: &str) -> Result<()> {
@@ -34,14 +34,14 @@ pub fn require_live(config: &config::Config, description: &str) -> Result<()> {
     }
 
     bail!(
-        "HymoFS is not available for {} (status={})",
+        "Kasumi is not available for {} (status={})",
         description,
-        hymofs::status_name(hymofs::check_status())
+        kasumi::status_name(kasumi::check_status())
     );
 }
 
 pub fn hook_lines() -> Result<Vec<String>> {
-    Ok(hymofs::get_hooks()?
+    Ok(kasumi::get_hooks()?
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
@@ -49,39 +49,39 @@ pub fn hook_lines() -> Result<Vec<String>> {
         .collect())
 }
 
-pub fn collect_runtime_info(config: &config::Config) -> HymoFsRuntimeInfo {
-    let live_status = hymofs::check_status();
+pub fn collect_runtime_info(config: &config::Config) -> KasumiRuntimeInfo {
+    let live_status = kasumi::check_status();
     let lkm_loaded = lkm::is_loaded();
-    let protocol_version = hymofs::get_protocol_version().ok();
-    let feature_bits = hymofs::get_features().ok();
-    let feature_names = feature_bits.map(hymofs::feature_names).unwrap_or_default();
+    let protocol_version = kasumi::get_protocol_version().ok();
+    let feature_bits = kasumi::get_features().ok();
+    let feature_names = feature_bits.map(kasumi::feature_names).unwrap_or_default();
     let hooks = hook_lines().unwrap_or_default();
-    let rule_count = hymofs::get_active_rules()
-        .map(|value| api::parse_hymofs_rule_listing(&value).len())
+    let rule_count = kasumi::get_active_rules()
+        .map(|value| api::parse_kasumi_rule_listing(&value).len())
         .unwrap_or(0);
-    let available = live_status == HymoFsStatus::Available;
-    let status = if config.hymofs.enabled {
-        hymofs::status_name(live_status).to_string()
+    let available = live_status == KasumiStatus::Available;
+    let status = if config.kasumi.enabled {
+        kasumi::status_name(live_status).to_string()
     } else if available || lkm_loaded || rule_count > 0 {
         "disabled_runtime_present".to_string()
     } else {
         "disabled".to_string()
     };
 
-    HymoFsRuntimeInfo {
+    KasumiRuntimeInfo {
         status,
         available,
         lkm_loaded,
-        lkm_autoload: config.hymofs.lkm_autoload,
-        lkm_kmi_override: config.hymofs.lkm_kmi_override.clone(),
+        lkm_autoload: config.kasumi.lkm_autoload,
+        lkm_kmi_override: config.kasumi.lkm_kmi_override.clone(),
         lkm_current_kmi: lkm::current_kmi(),
-        lkm_dir: config.hymofs.lkm_dir.clone(),
+        lkm_dir: config.kasumi.lkm_dir.clone(),
         protocol_version,
         feature_bits,
         feature_names,
         hooks,
         rule_count,
         user_hide_rule_count: user_hide_rules::user_hide_rule_count(),
-        mirror_path: config.hymofs.mirror_path.clone(),
+        mirror_path: config.kasumi.mirror_path.clone(),
     }
 }

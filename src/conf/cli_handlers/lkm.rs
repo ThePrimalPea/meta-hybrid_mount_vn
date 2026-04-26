@@ -18,7 +18,7 @@ use super::shared::{load_effective_config, update_config_for_cli};
 use crate::{
     conf::cli::Cli,
     core::api,
-    sys::{hymofs, lkm},
+    sys::{kasumi, lkm},
 };
 
 pub fn handle_lkm_status(cli: &Cli) -> Result<()> {
@@ -36,27 +36,27 @@ pub fn handle_lkm_status(cli: &Cli) -> Result<()> {
 pub fn handle_lkm_load(cli: &Cli) -> Result<()> {
     let config = load_effective_config(cli)?;
     crate::scoped_log!(info, "cli:lkm:load", "start");
-    lkm::load(&config.hymofs)?;
-    hymofs::invalidate_status_cache();
+    lkm::load(&config.kasumi)?;
+    kasumi::invalidate_status_cache();
     crate::scoped_log!(info, "cli:lkm:load", "complete");
-    println!("HymoFS LKM loaded.");
+    println!("Kasumi LKM loaded.");
     Ok(())
 }
 
 pub fn handle_lkm_unload(cli: &Cli) -> Result<()> {
     let config = load_effective_config(cli)?;
     crate::scoped_log!(info, "cli:lkm:unload", "start");
-    lkm::unload(&config.hymofs)?;
-    hymofs::invalidate_status_cache();
+    lkm::unload(&config.kasumi)?;
+    kasumi::invalidate_status_cache();
     crate::scoped_log!(info, "cli:lkm:unload", "complete");
-    println!("HymoFS LKM unloaded.");
+    println!("Kasumi LKM unloaded.");
     Ok(())
 }
 
 pub fn handle_lkm_set_autoload(cli: &Cli, enabled: bool) -> Result<()> {
     crate::scoped_log!(info, "cli:lkm:set_autoload", "start: enabled={}", enabled);
     let (path, _) = update_config_for_cli(cli, |config| {
-        config.hymofs.lkm_autoload = enabled;
+        config.kasumi.lkm_autoload = enabled;
     })?;
     crate::scoped_log!(
         info,
@@ -66,7 +66,7 @@ pub fn handle_lkm_set_autoload(cli: &Cli, enabled: bool) -> Result<()> {
         path.display()
     );
     println!(
-        "HymoFS LKM autoload {} in {}.",
+        "Kasumi LKM autoload {} in {}.",
         if enabled { "enabled" } else { "disabled" },
         path.display()
     );
@@ -76,7 +76,7 @@ pub fn handle_lkm_set_autoload(cli: &Cli, enabled: bool) -> Result<()> {
 pub fn handle_lkm_set_kmi(cli: &Cli, kmi: &str) -> Result<()> {
     crate::scoped_log!(info, "cli:lkm:set_kmi", "start: kmi={}", kmi);
     let (path, _) = update_config_for_cli(cli, |config| {
-        config.hymofs.lkm_kmi_override = kmi.to_string();
+        config.kasumi.lkm_kmi_override = kmi.to_string();
     })?;
     crate::scoped_log!(
         info,
@@ -86,7 +86,7 @@ pub fn handle_lkm_set_kmi(cli: &Cli, kmi: &str) -> Result<()> {
         path.display()
     );
     println!(
-        "HymoFS LKM KMI override set to {} in {}.",
+        "Kasumi LKM KMI override set to {} in {}.",
         kmi,
         path.display()
     );
@@ -96,7 +96,7 @@ pub fn handle_lkm_set_kmi(cli: &Cli, kmi: &str) -> Result<()> {
 pub fn handle_lkm_clear_kmi(cli: &Cli) -> Result<()> {
     crate::scoped_log!(info, "cli:lkm:clear_kmi", "start");
     let (path, _) = update_config_for_cli(cli, |config| {
-        config.hymofs.lkm_kmi_override.clear();
+        config.kasumi.lkm_kmi_override.clear();
     })?;
     crate::scoped_log!(
         info,
@@ -104,6 +104,6 @@ pub fn handle_lkm_clear_kmi(cli: &Cli) -> Result<()> {
         "complete: path={}",
         path.display()
     );
-    println!("HymoFS LKM KMI override cleared in {}.", path.display());
+    println!("Kasumi LKM KMI override cleared in {}.", path.display());
     Ok(())
 }

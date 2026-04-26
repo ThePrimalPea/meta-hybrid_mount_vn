@@ -168,7 +168,7 @@ impl HymoSpoofKstat {
         write_path_into_c_buf(
             &mut self.target_pathname,
             target_pathname.as_ref(),
-            "HymoFS kstat target pathname",
+            "Kasumi kstat target pathname",
         )
     }
 
@@ -212,27 +212,27 @@ impl HymoSpoofUname {
     }
 
     pub fn set_sysname(&mut self, value: &str) -> Result<()> {
-        write_str_into_c_buf(&mut self.sysname, value, "HymoFS uname sysname")
+        write_str_into_c_buf(&mut self.sysname, value, "Kasumi uname sysname")
     }
 
     pub fn set_nodename(&mut self, value: &str) -> Result<()> {
-        write_str_into_c_buf(&mut self.nodename, value, "HymoFS uname nodename")
+        write_str_into_c_buf(&mut self.nodename, value, "Kasumi uname nodename")
     }
 
     pub fn set_release(&mut self, value: &str) -> Result<()> {
-        write_str_into_c_buf(&mut self.release, value, "HymoFS uname release")
+        write_str_into_c_buf(&mut self.release, value, "Kasumi uname release")
     }
 
     pub fn set_version(&mut self, value: &str) -> Result<()> {
-        write_str_into_c_buf(&mut self.version, value, "HymoFS uname version")
+        write_str_into_c_buf(&mut self.version, value, "Kasumi uname version")
     }
 
     pub fn set_machine(&mut self, value: &str) -> Result<()> {
-        write_str_into_c_buf(&mut self.machine, value, "HymoFS uname machine")
+        write_str_into_c_buf(&mut self.machine, value, "Kasumi uname machine")
     }
 
     pub fn set_domainname(&mut self, value: &str) -> Result<()> {
-        write_str_into_c_buf(&mut self.domainname, value, "HymoFS uname domainname")
+        write_str_into_c_buf(&mut self.domainname, value, "Kasumi uname domainname")
     }
 
     pub fn release(&self) -> String {
@@ -268,7 +268,7 @@ impl HymoSpoofCmdline {
     }
 
     pub fn set_cmdline(&mut self, cmdline: &str) -> Result<()> {
-        write_str_into_c_buf(&mut self.cmdline, cmdline, "HymoFS cmdline")
+        write_str_into_c_buf(&mut self.cmdline, cmdline, "Kasumi cmdline")
     }
 
     pub fn cmdline(&self) -> String {
@@ -323,7 +323,7 @@ impl HymoMapsRule {
         write_path_into_c_buf(
             &mut self.spoofed_pathname,
             spoofed_pathname.as_ref(),
-            "HymoFS maps spoofed pathname",
+            "Kasumi maps spoofed pathname",
         )
     }
 
@@ -366,7 +366,7 @@ impl HymoMountHideArg {
         write_path_into_c_buf(
             &mut self.path_pattern,
             path_pattern.as_ref(),
-            "HymoFS mount_hide path_pattern",
+            "Kasumi mount_hide path_pattern",
         )
     }
 
@@ -442,7 +442,7 @@ impl HymoStatfsSpoofArg {
     }
 
     pub fn set_path(&mut self, path: impl AsRef<Path>) -> Result<()> {
-        write_path_into_c_buf(&mut self.path, path.as_ref(), "HymoFS statfs path")
+        write_path_into_c_buf(&mut self.path, path.as_ref(), "Kasumi statfs path")
     }
 
     pub fn set_spoof_f_type(&mut self, spoof_f_type: c_ulong) {
@@ -562,7 +562,7 @@ unsafe impl<T> Ioctl for HymoIoctlArg<'_, T> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum HymoFsStatus {
+pub enum KasumiStatus {
     Available,
     #[default]
     NotPresent,
@@ -570,12 +570,12 @@ pub enum HymoFsStatus {
     ModuleTooOld,
 }
 
-pub fn status_name(status: HymoFsStatus) -> &'static str {
+pub fn status_name(status: KasumiStatus) -> &'static str {
     match status {
-        HymoFsStatus::Available => "available",
-        HymoFsStatus::NotPresent => "not_present",
-        HymoFsStatus::KernelTooOld => "kernel_too_old",
-        HymoFsStatus::ModuleTooOld => "module_too_old",
+        KasumiStatus::Available => "available",
+        KasumiStatus::NotPresent => "not_present",
+        KasumiStatus::KernelTooOld => "kernel_too_old",
+        KasumiStatus::ModuleTooOld => "module_too_old",
     }
 }
 
@@ -613,7 +613,7 @@ pub fn feature_names(bits: c_int) -> Vec<String> {
 #[derive(Debug, Default)]
 struct StatusCache {
     checked: bool,
-    status: HymoFsStatus,
+    status: KasumiStatus,
 }
 
 static STATUS_CACHE: LazyLock<Mutex<StatusCache>> =
@@ -626,7 +626,7 @@ fn cstring_from_path(path: &Path) -> Result<CString> {
 }
 
 fn lock_error(name: &str) -> anyhow::Error {
-    anyhow!("failed to lock HymoFS {name} mutex")
+    anyhow!("failed to lock Kasumi {name} mutex")
 }
 
 fn read_c_buf(buf: &[c_char]) -> String {
@@ -662,7 +662,11 @@ fn module_loaded() -> bool {
     };
 
     content.lines().any(|line| {
-        line.starts_with("hymofs_lkm ")
+        line.starts_with("kasumi_lkm ")
+            || line.starts_with("kasumi_lkm\t")
+            || line.starts_with("kasumi ")
+            || line.starts_with("kasumi\t")
+            || line.starts_with("hymofs_lkm ")
             || line.starts_with("hymofs_lkm\t")
             || line.starts_with("hymofs ")
             || line.starts_with("hymofs\t")
@@ -674,12 +678,12 @@ fn fetch_anon_fd() -> Result<c_int> {
     {
         let cache = FD_CACHE.lock().map_err(|_| lock_error("fd"))?;
         if let Some(fd) = *cache {
-            crate::scoped_log!(debug, "hymofs:fd", "complete: source=cache, fd={}", fd);
+            crate::scoped_log!(debug, "kasumi:fd", "complete: source=cache, fd={}", fd);
             return Ok(fd);
         }
     }
 
-    crate::scoped_log!(debug, "hymofs:fd", "start: source=kernel_query");
+    crate::scoped_log!(debug, "kasumi:fd", "start: source=kernel_query");
 
     let mut fd = -1;
     const WAIT_ATTEMPTS: usize = 4;
@@ -703,7 +707,7 @@ fn fetch_anon_fd() -> Result<c_int> {
         if fd >= 0 {
             crate::scoped_log!(
                 debug,
-                "hymofs:fd",
+                "kasumi:fd",
                 "complete: source=prctl, round={}",
                 wait_round
             );
@@ -727,7 +731,7 @@ fn fetch_anon_fd() -> Result<c_int> {
             if fd >= 0 {
                 crate::scoped_log!(
                     debug,
-                    "hymofs:fd",
+                    "kasumi:fd",
                     "complete: source=syscall, round={}, retry={}",
                     wait_round,
                     retry
@@ -744,12 +748,12 @@ fn fetch_anon_fd() -> Result<c_int> {
     if fd < 0 {
         crate::scoped_log!(
             warn,
-            "hymofs:fd",
+            "kasumi:fd",
             "failed: reason=obtain_fd_failed, attempts={}, short_retries={}",
             WAIT_ATTEMPTS,
             SHORT_RETRIES
         );
-        bail!("failed to obtain HymoFS anonymous fd");
+        bail!("failed to obtain Kasumi anonymous fd");
     }
 
     let mut cache = FD_CACHE.lock().map_err(|_| lock_error("fd"))?;
@@ -759,7 +763,7 @@ fn fetch_anon_fd() -> Result<c_int> {
 
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
 fn fetch_anon_fd() -> Result<c_int> {
-    bail!("HymoFS is only supported on linux/android")
+    bail!("Kasumi is only supported on linux/android")
 }
 
 fn ioctl_error_context(name: &str, request: HymoIoctlRequest, err: Errno) -> String {
@@ -770,7 +774,7 @@ fn ioctl_error_context(name: &str, request: HymoIoctlRequest, err: Errno) -> Str
     };
 
     format!(
-        "HymoFS ioctl failed: name={name}, opcode=0x{:x}, errno={} ({hint})",
+        "Kasumi ioctl failed: name={name}, opcode=0x{:x}, errno={} ({hint})",
         request,
         err.raw_os_error()
     )
@@ -779,7 +783,7 @@ fn ioctl_error_context(name: &str, request: HymoIoctlRequest, err: Errno) -> Str
 fn ioctl_noarg(name: &str, request: HymoIoctlRequest) -> Result<()> {
     crate::scoped_log!(
         debug,
-        "hymofs:ioctl",
+        "kasumi:ioctl",
         "start: name={}, opcode=0x{:x}, has_arg=false",
         name,
         request
@@ -790,7 +794,7 @@ fn ioctl_noarg(name: &str, request: HymoIoctlRequest) -> Result<()> {
         Ok(()) => {
             crate::scoped_log!(
                 debug,
-                "hymofs:ioctl",
+                "kasumi:ioctl",
                 "complete: name={}, opcode=0x{:x}",
                 name,
                 request
@@ -801,7 +805,7 @@ fn ioctl_noarg(name: &str, request: HymoIoctlRequest) -> Result<()> {
             let context = ioctl_error_context(name, request, err);
             crate::scoped_log!(
                 error,
-                "hymofs:ioctl",
+                "kasumi:ioctl",
                 "failed: name={}, opcode=0x{:x}, errno={}",
                 name,
                 request,
@@ -815,7 +819,7 @@ fn ioctl_noarg(name: &str, request: HymoIoctlRequest) -> Result<()> {
 fn ioctl_with_arg<T>(name: &str, request: HymoIoctlRequest, arg: &mut T) -> Result<()> {
     crate::scoped_log!(
         debug,
-        "hymofs:ioctl",
+        "kasumi:ioctl",
         "start: name={}, opcode=0x{:x}, has_arg=true",
         name,
         request
@@ -826,7 +830,7 @@ fn ioctl_with_arg<T>(name: &str, request: HymoIoctlRequest, arg: &mut T) -> Resu
         Ok(()) => {
             crate::scoped_log!(
                 debug,
-                "hymofs:ioctl",
+                "kasumi:ioctl",
                 "complete: name={}, opcode=0x{:x}",
                 name,
                 request
@@ -837,7 +841,7 @@ fn ioctl_with_arg<T>(name: &str, request: HymoIoctlRequest, arg: &mut T) -> Resu
             let context = ioctl_error_context(name, request, err);
             crate::scoped_log!(
                 error,
-                "hymofs:ioctl",
+                "kasumi:ioctl",
                 "failed: name={}, opcode=0x{:x}, errno={}",
                 name,
                 request,
@@ -863,7 +867,7 @@ fn ensure_kernel_err(context: &str, kernel_err: c_int) -> Result<()> {
 fn list_ioctl(request: HymoIoctlRequest, capacity: usize, description: &str) -> Result<String> {
     crate::scoped_log!(
         debug,
-        "hymofs:list_ioctl",
+        "kasumi:list_ioctl",
         "start: description={}, opcode=0x{:x}, capacity={}",
         description,
         request,
@@ -875,13 +879,13 @@ fn list_ioctl(request: HymoIoctlRequest, capacity: usize, description: &str) -> 
         size: buf.len(),
     };
     ioctl_with_arg(description, request, &mut arg)
-        .with_context(|| format!("failed to query HymoFS {description}"))?;
+        .with_context(|| format!("failed to query Kasumi {description}"))?;
 
     let len = buf.iter().position(|byte| *byte == 0).unwrap_or(buf.len());
     let output = String::from_utf8_lossy(&buf[..len]).into_owned();
     crate::scoped_log!(
         debug,
-        "hymofs:list_ioctl",
+        "kasumi:list_ioctl",
         "complete: description={}, bytes={}",
         description,
         len
@@ -895,13 +899,13 @@ pub fn get_protocol_version() -> Result<c_int> {
     Ok(version)
 }
 
-pub fn check_status() -> HymoFsStatus {
+pub fn check_status() -> KasumiStatus {
     if let Ok(cache) = STATUS_CACHE.lock()
         && cache.checked
     {
         crate::scoped_log!(
             debug,
-            "hymofs:status",
+            "kasumi:status",
             "complete: source=cache, status={}",
             status_name(cache.status)
         );
@@ -909,13 +913,13 @@ pub fn check_status() -> HymoFsStatus {
     }
 
     let status = if !module_loaded() {
-        HymoFsStatus::NotPresent
+        KasumiStatus::NotPresent
     } else {
         match get_protocol_version() {
-            Ok(version) if version < HYMO_PROTOCOL_VERSION => HymoFsStatus::KernelTooOld,
-            Ok(version) if version > HYMO_PROTOCOL_VERSION => HymoFsStatus::ModuleTooOld,
-            Ok(_) => HymoFsStatus::Available,
-            Err(_) => HymoFsStatus::NotPresent,
+            Ok(version) if version < HYMO_PROTOCOL_VERSION => KasumiStatus::KernelTooOld,
+            Ok(version) if version > HYMO_PROTOCOL_VERSION => KasumiStatus::ModuleTooOld,
+            Ok(_) => KasumiStatus::Available,
+            Err(_) => KasumiStatus::NotPresent,
         }
     };
 
@@ -926,7 +930,7 @@ pub fn check_status() -> HymoFsStatus {
 
     crate::scoped_log!(
         debug,
-        "hymofs:status",
+        "kasumi:status",
         "complete: source=probe, status={}",
         status_name(status)
     );
@@ -935,8 +939,8 @@ pub fn check_status() -> HymoFsStatus {
 }
 
 pub fn can_operate() -> bool {
-    let operable = matches!(check_status(), HymoFsStatus::Available);
-    crate::scoped_log!(debug, "hymofs:status", "complete: can_operate={}", operable);
+    let operable = matches!(check_status(), KasumiStatus::Available);
+    crate::scoped_log!(debug, "kasumi:status", "complete: can_operate={}", operable);
     operable
 }
 
@@ -973,7 +977,7 @@ pub fn hide_path(virtual_path: &Path) -> Result<()> {
 fn helper_rule_dtype(path: &Path) -> Result<Option<c_int>> {
     let metadata = fs::symlink_metadata(path).with_context(|| {
         format!(
-            "failed to read HymoFS helper metadata for {}",
+            "failed to read Kasumi helper metadata for {}",
             path.display()
         )
     })?;
@@ -1008,7 +1012,7 @@ pub fn list_rules_with_capacity(capacity: usize) -> Result<String> {
 pub fn add_rules_from_directory(target_base: &Path, module_dir: &Path) -> Result<()> {
     if !module_dir.exists() || !module_dir.is_dir() {
         bail!(
-            "HymoFS helper source is not a directory: {}",
+            "Kasumi helper source is not a directory: {}",
             module_dir.display()
         );
     }
@@ -1016,7 +1020,7 @@ pub fn add_rules_from_directory(target_base: &Path, module_dir: &Path) -> Result
     for entry_result in WalkDir::new(module_dir).follow_links(false) {
         let entry = entry_result.with_context(|| {
             format!(
-                "failed to walk HymoFS helper directory {}",
+                "failed to walk Kasumi helper directory {}",
                 module_dir.display()
             )
         })?;
@@ -1028,7 +1032,7 @@ pub fn add_rules_from_directory(target_base: &Path, module_dir: &Path) -> Result
         let path = entry.path();
         let relative = path.strip_prefix(module_dir).with_context(|| {
             format!(
-                "failed to compute relative path for HymoFS helper entry {}",
+                "failed to compute relative path for Kasumi helper entry {}",
                 path.display()
             )
         })?;
@@ -1046,7 +1050,7 @@ pub fn add_rules_from_directory(target_base: &Path, module_dir: &Path) -> Result
 pub fn remove_rules_from_directory(target_base: &Path, module_dir: &Path) -> Result<()> {
     if !module_dir.exists() || !module_dir.is_dir() {
         bail!(
-            "HymoFS helper source is not a directory: {}",
+            "Kasumi helper source is not a directory: {}",
             module_dir.display()
         );
     }
@@ -1054,7 +1058,7 @@ pub fn remove_rules_from_directory(target_base: &Path, module_dir: &Path) -> Res
     for entry_result in WalkDir::new(module_dir).follow_links(false) {
         let entry = entry_result.with_context(|| {
             format!(
-                "failed to walk HymoFS helper directory {}",
+                "failed to walk Kasumi helper directory {}",
                 module_dir.display()
             )
         })?;
@@ -1066,7 +1070,7 @@ pub fn remove_rules_from_directory(target_base: &Path, module_dir: &Path) -> Res
         let path = entry.path();
         let relative = path.strip_prefix(module_dir).with_context(|| {
             format!(
-                "failed to compute relative path for HymoFS helper entry {}",
+                "failed to compute relative path for Kasumi helper entry {}",
                 path.display()
             )
         })?;
@@ -1101,19 +1105,19 @@ pub fn set_enabled(enable: bool) -> Result<()> {
 pub fn add_spoof_kstat(rule: &HymoSpoofKstat) -> Result<()> {
     let mut rule = *rule;
     ioctl_with_arg("add_spoof_kstat", HYMO_IOC_ADD_SPOOF_KSTAT, &mut rule)?;
-    ensure_kernel_err("HymoFS add_spoof_kstat", rule.err)
+    ensure_kernel_err("Kasumi add_spoof_kstat", rule.err)
 }
 
 pub fn update_spoof_kstat(rule: &HymoSpoofKstat) -> Result<()> {
     let mut rule = *rule;
     ioctl_with_arg("update_spoof_kstat", HYMO_IOC_UPDATE_SPOOF_KSTAT, &mut rule)?;
-    ensure_kernel_err("HymoFS update_spoof_kstat", rule.err)
+    ensure_kernel_err("Kasumi update_spoof_kstat", rule.err)
 }
 
 pub fn set_uname(uname: &HymoSpoofUname) -> Result<()> {
     let mut uname = *uname;
     ioctl_with_arg("set_uname", HYMO_IOC_SET_UNAME, &mut uname)?;
-    ensure_kernel_err("HymoFS set_uname", uname.err)
+    ensure_kernel_err("Kasumi set_uname", uname.err)
 }
 
 pub fn set_cmdline(cmdline: &HymoSpoofCmdline) -> Result<()> {
@@ -1124,7 +1128,7 @@ pub fn set_cmdline(cmdline: &HymoSpoofCmdline) -> Result<()> {
         let context = ioctl_error_context("set_cmdline", HYMO_IOC_SET_CMDLINE, err);
         return Err(anyhow::Error::new(err).context(context));
     }
-    ensure_kernel_err("HymoFS set_cmdline", cmdline.err)
+    ensure_kernel_err("Kasumi set_cmdline", cmdline.err)
 }
 
 pub fn set_cmdline_str(cmdline: &str) -> Result<()> {
@@ -1168,7 +1172,7 @@ pub fn get_hooks_with_capacity(capacity: usize) -> Result<String> {
 pub fn add_maps_rule(rule: &HymoMapsRule) -> Result<()> {
     let mut rule = *rule;
     ioctl_with_arg("add_maps_rule", HYMO_IOC_ADD_MAPS_RULE, &mut rule)?;
-    ensure_kernel_err("HymoFS add_maps_rule", rule.err)
+    ensure_kernel_err("Kasumi add_maps_rule", rule.err)
 }
 
 pub fn clear_maps_rules() -> Result<()> {
@@ -1183,7 +1187,7 @@ pub fn set_mount_hide(enable: bool) -> Result<()> {
 pub fn set_mount_hide_config(config: &HymoMountHideArg) -> Result<()> {
     let mut config = *config;
     ioctl_with_arg("set_mount_hide", HYMO_IOC_SET_MOUNT_HIDE, &mut config)?;
-    ensure_kernel_err("HymoFS mount_hide", config.err)
+    ensure_kernel_err("Kasumi mount_hide", config.err)
 }
 
 pub fn set_maps_spoof(enable: bool) -> Result<()> {
@@ -1194,7 +1198,7 @@ pub fn set_maps_spoof(enable: bool) -> Result<()> {
 pub fn set_maps_spoof_config(config: &HymoMapsSpoofArg) -> Result<()> {
     let mut config = *config;
     ioctl_with_arg("set_maps_spoof", HYMO_IOC_SET_MAPS_SPOOF, &mut config)?;
-    ensure_kernel_err("HymoFS maps_spoof", config.err)
+    ensure_kernel_err("Kasumi maps_spoof", config.err)
 }
 
 pub fn set_statfs_spoof(enable: bool) -> Result<()> {
@@ -1205,7 +1209,7 @@ pub fn set_statfs_spoof(enable: bool) -> Result<()> {
 pub fn set_statfs_spoof_config(config: &HymoStatfsSpoofArg) -> Result<()> {
     let mut config = *config;
     ioctl_with_arg("set_statfs_spoof", HYMO_IOC_SET_STATFS_SPOOF, &mut config)?;
-    ensure_kernel_err("HymoFS statfs_spoof", config.err)
+    ensure_kernel_err("Kasumi statfs_spoof", config.err)
 }
 
 pub fn release_connection() {
@@ -1222,6 +1226,6 @@ pub fn release_connection() {
 pub fn invalidate_status_cache() {
     if let Ok(mut cache) = STATUS_CACHE.lock() {
         cache.checked = false;
-        cache.status = HymoFsStatus::NotPresent;
+        cache.status = KasumiStatus::NotPresent;
     }
 }

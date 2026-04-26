@@ -25,7 +25,7 @@ use crate::{
     conf::{
         cli::Cli,
         loader,
-        schema::{Config, HymoFsConfig, OverlayMode},
+        schema::{Config, KasumiConfig, OverlayMode},
     },
     defs,
     domain::{DefaultMode, ModuleRules},
@@ -187,7 +187,8 @@ pub struct ConfigPatch {
     pub disable_umount: Option<bool>,
     pub enable_overlay_fallback: Option<bool>,
     pub default_mode: Option<DefaultMode>,
-    pub hymofs: Option<HymoFsConfig>,
+    #[serde(alias = "hymofs")]
+    pub kasumi: Option<KasumiConfig>,
     pub rules: Option<HashMap<String, ModuleRules>>,
 }
 
@@ -221,8 +222,8 @@ impl ConfigPatch {
             config.default_mode = default_mode;
         }
 
-        if let Some(hymofs) = self.hymofs {
-            config.hymofs = hymofs;
+        if let Some(kasumi) = self.kasumi {
+            config.kasumi = kasumi;
         }
 
         if let Some(rules) = self.rules {

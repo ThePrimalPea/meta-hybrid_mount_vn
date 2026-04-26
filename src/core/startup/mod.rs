@@ -51,34 +51,34 @@ pub fn run(cli: &Cli) -> Result<()> {
         crate::scoped_log!(debug, "startup", "kernel: version={}", version.trim());
     }
 
-    if config.hymofs.enabled {
-        match sys::lkm::autoload_if_needed(&config.hymofs) {
+    if config.kasumi.enabled {
+        match sys::lkm::autoload_if_needed(&config.kasumi) {
             Ok(true) => {
                 crate::scoped_log!(
                     info,
                     "startup",
-                    "hymofs lkm autoload: loaded=true, dir={}",
-                    config.hymofs.lkm_dir.display()
+                    "kasumi lkm autoload: loaded=true, dir={}",
+                    config.kasumi.lkm_dir.display()
                 );
             }
             Ok(false) => {
                 crate::scoped_log!(
                     debug,
                     "startup",
-                    "hymofs lkm autoload: loaded=false, reason=not_needed"
+                    "kasumi lkm autoload: loaded=false, reason=not_needed"
                 );
             }
             Err(err) => {
                 crate::scoped_log!(
                     warn,
                     "startup",
-                    "hymofs lkm autoload failed: error={:#}",
+                    "kasumi lkm autoload failed: error={:#}",
                     err
                 );
             }
         }
     } else {
-        crate::scoped_log!(debug, "startup", "hymofs disabled: skip_lkm_autoload=true");
+        crate::scoped_log!(debug, "startup", "kasumi disabled: skip_lkm_autoload=true");
     }
 
     if config.disable_umount {

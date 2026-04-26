@@ -23,37 +23,37 @@ pub(super) fn build_managed_partitions(
 }
 
 pub(super) fn effective_stealth_enabled(config: &config::Config) -> bool {
-    config.hymofs.enable_stealth || config.hymofs.enable_hidexattr
+    config.kasumi.enable_stealth || config.kasumi.enable_hidexattr
 }
 
 pub(super) fn effective_mount_hide_enabled(config: &config::Config) -> bool {
-    config.hymofs.enable_mount_hide
-        || config.hymofs.enable_hidexattr
-        || config.hymofs.mount_hide.enabled
-        || !config.hymofs.mount_hide.path_pattern.as_os_str().is_empty()
+    config.kasumi.enable_mount_hide
+        || config.kasumi.enable_hidexattr
+        || config.kasumi.mount_hide.enabled
+        || !config.kasumi.mount_hide.path_pattern.as_os_str().is_empty()
 }
 
 pub(super) fn effective_maps_spoof_enabled(config: &config::Config) -> bool {
-    config.hymofs.enable_maps_spoof
-        || config.hymofs.enable_hidexattr
-        || !config.hymofs.maps_rules.is_empty()
+    config.kasumi.enable_maps_spoof
+        || config.kasumi.enable_hidexattr
+        || !config.kasumi.maps_rules.is_empty()
 }
 
 pub(super) fn effective_statfs_spoof_enabled(config: &config::Config) -> bool {
-    config.hymofs.enable_statfs_spoof
-        || config.hymofs.enable_hidexattr
-        || config.hymofs.statfs_spoof.enabled
-        || !config.hymofs.statfs_spoof.path.as_os_str().is_empty()
-        || config.hymofs.statfs_spoof.spoof_f_type != 0
+    config.kasumi.enable_statfs_spoof
+        || config.kasumi.enable_hidexattr
+        || config.kasumi.statfs_spoof.enabled
+        || !config.kasumi.statfs_spoof.path.as_os_str().is_empty()
+        || config.kasumi.statfs_spoof.spoof_f_type != 0
 }
 
 pub(super) fn has_uname_spoof_config(config: &config::Config) -> bool {
-    !config.hymofs.uname.sysname.is_empty()
-        || !config.hymofs.uname.nodename.is_empty()
-        || !config.hymofs.uname.release.is_empty()
-        || !config.hymofs.uname.version.is_empty()
-        || !config.hymofs.uname.machine.is_empty()
-        || !config.hymofs.uname.domainname.is_empty()
+    !config.kasumi.uname.sysname.is_empty()
+        || !config.kasumi.uname.nodename.is_empty()
+        || !config.kasumi.uname.release.is_empty()
+        || !config.kasumi.uname.version.is_empty()
+        || !config.kasumi.uname.machine.is_empty()
+        || !config.kasumi.uname.domainname.is_empty()
 }
 
 pub(super) fn feature_supported(features: Option<i32>, required_feature: i32) -> bool {

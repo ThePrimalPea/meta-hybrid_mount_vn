@@ -82,9 +82,9 @@ pub enum Commands {
         #[command(subcommand)]
         command: HideCommands,
     },
-    Hymofs {
+    Kasumi {
         #[command(subcommand)]
-        command: HymofsCommands,
+        command: KasumiCommands,
     },
 }
 
@@ -101,7 +101,7 @@ impl ToggleState {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum HymofsCommands {
+pub enum KasumiCommands {
     Status,
     List,
     Version,
@@ -149,28 +149,28 @@ pub enum HymofsCommands {
     },
     Uname {
         #[command(subcommand)]
-        command: HymofsUnameCommands,
+        command: KasumiUnameCommands,
     },
     Cmdline {
         #[command(subcommand)]
-        command: HymofsCmdlineCommands,
+        command: KasumiCmdlineCommands,
     },
     #[command(name = "hide-uids")]
     HideUids {
         #[command(subcommand)]
-        command: HymofsHideUidsCommands,
+        command: KasumiHideUidsCommands,
     },
     Maps {
         #[command(subcommand)]
-        command: HymofsMapsCommands,
+        command: KasumiMapsCommands,
     },
     Kstat {
         #[command(subcommand)]
-        command: HymofsKstatCommands,
+        command: KasumiKstatCommands,
     },
     Rule {
         #[command(subcommand)]
-        command: HymofsRuleCommands,
+        command: KasumiRuleCommands,
     },
 }
 
@@ -214,7 +214,7 @@ pub enum LkmCommands {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum HymofsUnameCommands {
+pub enum KasumiUnameCommands {
     Set {
         #[arg(long)]
         sysname: Option<String>,
@@ -233,13 +233,13 @@ pub enum HymofsUnameCommands {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum HymofsCmdlineCommands {
+pub enum KasumiCmdlineCommands {
     Set { value: String },
     Clear,
 }
 
 #[derive(Subcommand, Debug)]
-pub enum HymofsHideUidsCommands {
+pub enum KasumiHideUidsCommands {
     Set {
         #[arg(num_args = 1..)]
         uids: Vec<u32>,
@@ -248,7 +248,7 @@ pub enum HymofsHideUidsCommands {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum HymofsMapsCommands {
+pub enum KasumiMapsCommands {
     Add {
         #[arg(long = "target-ino")]
         target_ino: u64,
@@ -265,7 +265,7 @@ pub enum HymofsMapsCommands {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum HymofsKstatCommands {
+pub enum KasumiKstatCommands {
     Upsert {
         #[arg(long = "target-ino")]
         target_ino: u64,
@@ -303,7 +303,7 @@ pub enum HymofsKstatCommands {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum HymofsRuleCommands {
+pub enum KasumiRuleCommands {
     Add {
         target: PathBuf,
         source: PathBuf,
