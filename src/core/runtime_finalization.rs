@@ -43,6 +43,7 @@ pub fn finalize(
 
     module_status::update_description(
         storage_mode,
+        config.kasumi.enabled,
         result.overlay_module_ids.len(),
         result.magic_module_ids.len(),
         result.kasumi_module_ids.len(),
